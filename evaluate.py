@@ -67,6 +67,22 @@ def get_overall_scores_in_diff_metrics(true_y, pred_y, tr_doc_label_mat):
     return results
 
 
+def print_row_of_diff_metrics(model_name, result_numbers, headers=None, filename="./overall_result.csv"):
+
+    if headers is None:
+        bin_metrics = ["precision", "recall", "auc", "rprecision", "f1score"]
+        headers = ["model", "accuracy"] + [met+"_w" for met in bin_metrics]  + bin_metrics
+        print(",".join(headers))
+
+    with open(filename, 'a') as f:
+        f.write(model_name)
+        print(model_name),
+        for met in headers[1:]:
+            f.write(",%.4f" % result_numbers[met])
+            print(",%.4f" % result_numbers[met]),
+        f.write("\n")
+
+
 def get_weighted_avg(score_list, weights):
     return np.dot(score_list, weights)
 
