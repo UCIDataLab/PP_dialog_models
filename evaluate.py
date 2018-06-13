@@ -1,5 +1,5 @@
 import numpy as np
-from utils import get_lab_arr, save_sq_mat_with_labels
+from utils import get_lab_arr, save_sq_mat_with_labels, get_marginals
 from sklearn.metrics import precision_score, recall_score, roc_auc_score, f1_score, confusion_matrix
 
 
@@ -91,13 +91,6 @@ def get_weighted_avg_from_ymat(score_list, doc_label_mat):
     weights = get_marginals(doc_label_mat)
     weighted_avg = np.dot(score_list, weights)
     return weighted_avg
-
-
-def get_marginals(doc_label_mat):
-    n_docs_in_labels = np.sum(doc_label_mat, axis=0)
-    totalsum = np.sum(n_docs_in_labels)
-    weights = n_docs_in_labels / float(totalsum)
-    return weights
 
 
 def save_confusion_matrix(true_f, pred_f, lid2shortname, filename):

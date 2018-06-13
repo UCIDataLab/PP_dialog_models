@@ -1,4 +1,5 @@
 import numpy as np
+import csv
 
 def get_lab_arr(lablist, n_labels=None):
     if not n_labels:
@@ -31,3 +32,15 @@ def save_sq_mat_with_labels(mat, lid2shortname, filename):
         writer = csv.writer(f)
         writer.writerow([""] + lid2shortname)
         writer.writerows([[lid2shortname[i]]+row for i, row in enumerate(mat.tolist())])
+
+
+def get_marginals(doc_label_mat):
+    n_docs_in_labels = np.sum(doc_label_mat, axis=0)
+    totalsum = np.sum(n_docs_in_labels)
+    weights = n_docs_in_labels / float(totalsum)
+    return weights
+
+
+def get_marginals_from_y_seq(tr_true_y, n_labels):
+    doc_lab_mat = get_lab_arr(tr_true_y, n_labels)
+    return get_marginals(doc_lab_mat)
