@@ -1,5 +1,9 @@
+__author__ = 'Jihyun Park'
+__email__ = 'jihyunp@uci.edu'
+
 import numpy as np
 import csv
+
 
 def get_lab_arr(lablist, n_labels=None):
     if not n_labels:

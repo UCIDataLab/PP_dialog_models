@@ -7,32 +7,488 @@ from collections import defaultdict
 import numpy as np
 import pandas as pd
 import cPickle as cp
+import re
 
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 
 import preprocess as preproc
-from dialogdata import DialogData
 
 
-class MHDTrainData(DialogData):
+class MHDData():
+
+    def __init__(self, data_file, nouns_only=False, ignore_case=True,
+                 remove_numbers=False, sub_numbers=True, stopwords_dir="./stopwordlists",
+                 label_mappings=None, ngram_range=(1,2), max_np_len=3, min_wlen=1,
+                 min_dfreq=0.0001, max_dfreq=0.9, min_sfreq=5,
+                 token_pattern=r"(?u)[A-Za-z\?\!\-\.']+", verbose=1,
+                 corpus_pkl='./corpus.pkl', label_pkl='./label.pkl', vocab_pkl='./vocab.pkl'):
+
+        self.n_labels = 0
+        self.uid2lid = []
+        self.verbose = verbose
+
+        self.data_file = data_file
+        self.nouns_only = nouns_only
+
+        self.ngram_range = ngram_range
+        self.min_dfreq = min_dfreq
+        self.max_dfreq = max_dfreq
+
+        if self.nouns_only:
+            self.max_np_len = 1
+        else:
+            self.max_np_len = min(2, max_np_len)
+
+        self.max_wlen = max(self.ngram_range[-1], self.max_np_len)
+
+        self.token_pattern = token_pattern
+
+        self.stopwords = preproc.get_stopwords(stopwords_dir=stopwords_dir)
+        self.stopwords_all = self.stopwords.union() # do union for copying
+
+        self.load_corpus(data_file, sep="|", min_wcnt=min_wlen,
+                         min_np_len=self.max_np_len, max_np_len=max_np_len,
+                         token_pattern=token_pattern,
+                         ignore_case=ignore_case, remove_numbers=remove_numbers,
+                         sub_numbers=sub_numbers,
+                         corpus_pkl=corpus_pkl, label_pkl=label_pkl, vocab_pkl=vocab_pkl)
+
+        self.assign_labnames()
+        self.assign_spkr_codes()
+
+    def assign_labnames(self):
+        shortnames = ['BiomedHistorySymptom', 'MusSkePain', 'DizzyFallMemoryDentHearVision',
+                      'GynGenitoUrinary', 'Prognosis', 'TestDiagnostics', 'TherapeuticIntervention',
+                      'Medication', 'PreventiveCare', 'Diet',
+                      'Weight', 'Exercise', 'Alcohol', 'Sex', 'Cigarette',
+                      'OtherAddictions', 'Sleep', 'Death', 'Bereavement', 'PainSuffering',
+                      'Depression', 'GeneralAnxieties', 'HealthCareSystem', 'ActivityDailyLiving',
+                      'WorkLeisureActivity', 'Unemployment', 'MoneyBenefits', 'Caregiver', 'HomeEnv', 'Family',
+                      'Religion', 'Age', 'LivingWillAdvanceCarePlanning', 'MDLife', 'MDPT-Relationship',
+                      'SmallTalk', 'Other', 'VisitFlowManagement', 'PhysicalExam']
+        self.lab2shortname = {str(i + 1): shortnames[i] for i in range(len(shortnames))}
+        self.lab2ltr = {'1': 'A', '2': 'A', '3': 'A', '4': 'A', '5': 'A', '6': 'A', '7': 'A',
+                        '8': 'A', '9': 'A', '10': 'B', '11': 'B', '12': 'B', '13': 'B', '14': 'B',
+                        '15': 'B', '16': 'B', '17': 'B', '18': 'C', '19': 'C', '20': 'C', '21': 'C',
+                        '22': 'C', '23': 'D', '24': 'D', '25': 'D', '26': 'D', '27': 'D', '28': 'D',
+                        '29': 'D', '30': 'D', '31': 'D', '32': 'D', '33': 'D', '34': 'E', '35': 'E',
+                        '36': 'F', '37': 'F', '38': 'G', '39': 'G'}
+
+    def assign_spkr_codes(self):
+        self.spkrid2spkr = ["MD", "PT", "OTHER"]
+        self.spkr2spkrid = {sp: i for i, sp in enumerate(self.spkrid2spkr)}
+
+    def load_corpus(self, corpus_file, sep, min_wcnt=1, min_np_len=2, max_np_len=3,
+                    token_pattern=r"(?u)\b\w[A-Za-z']*\b",
+                    ignore_case=True, remove_numbers=False, sub_numbers=True, parser=None, stemmer_type=None,
+                    corpus_pkl='./corpus.pkl', label_pkl='./labels.pkl', vocab_pkl='./vocab.pkl'):
+        pass
+
+    def _save_lab_pkl(self, lid2lab_all, segid2lt, label_pkl):
+        lid2lab_all = sorted(list(lid2lab_all))
+        lab2lid_all = {ll: i for i, ll in enumerate(lid2lab_all)}
+
+        self.ltid2lt = sorted(list(set(segid2lt.values())))
+        self.lt2ltid = {ll: i for i, ll in enumerate(self.ltid2lt)}
+
+        self.lab2lid_all = lab2lid_all
+        self.lid2lab_all = lid2lab_all
+
+        lab_data_to_save = (lid2lab_all, lab2lid_all, self.ltid2lt, self.lt2ltid)
+        with open(label_pkl, 'wb') as f:
+            cp.dump(lab_data_to_save, f, protocol=cp.HIGHEST_PROTOCOL)
+
+    def _save_vocab_pkl(self, nps, vocab, stw_all, vocab_pkl):
+
+        if self.nouns_only:
+            nps_dict = {}
+            for i, nounp in enumerate(nps):
+                nps_dict[nounp] = i
+            self.vocabulary = nps_dict
+        else:
+            self.vocabulary = vocab
+        self.stopwords_all = stw_all
+
+        vocab_data_to_save = (self.vocabulary, stw_all)
+        with open(vocab_pkl, 'wb') as f:
+            cp.dump(vocab_data_to_save, f, protocol=cp.HIGHEST_PROTOCOL)
+
+    def _save_corpus_pkl(self, corpus_df, nps, np2cnt, uid2sstt, sstt2uid,
+                         uid2segid, segid2uids, sid2labs_all, segid2lab_all,
+                         segid2lt, uid2lab_all, corpus_pkl):
+        self.nps = nps
+        self.np2cnt = np2cnt
+        self.uid2sstt = uid2sstt
+        self.sstt2uid = sstt2uid
+        self.uid2segid = uid2segid
+        self.segid2uids = segid2uids
+        self.corpus_txt = list(corpus_df.text_cleaned)
+
+        self.segid2lab_all = segid2lab_all
+        self.segid2lt = segid2lt
+        self.sid2labs_all = sid2labs_all
+        self.uid2lab_all = uid2lab_all
+
+        data_to_save = (corpus_df, nps, np2cnt, uid2sstt, sstt2uid, uid2segid, segid2uids,
+                        sid2labs_all, segid2lab_all, segid2lt, uid2lab_all)
+        if not os.path.isdir(os.path.dirname(corpus_pkl)):
+            os.makedirs(os.path.dirname(corpus_pkl))
+        with open(corpus_pkl, 'wb') as f:
+            cp.dump(data_to_save, f, protocol=cp.HIGHEST_PROTOCOL)
+
+    def _load_vocab_pkl(self, vocab_pkl):
+        # if the pickle file exists, load the vocab
+        if os.path.exists(vocab_pkl):
+            if self.verbose > 0:
+                print("Loading the vocabulary file from " + vocab_pkl)
+                print(" (Delete the file if you want to re-generate the vocabulary)")
+            vocab_obj = cp.load(open(vocab_pkl))
+            if len(vocab_obj) > 2:
+                self.vocabulary = vocab_obj
+            elif len(vocab_obj) == 2:
+                self.vocabulary, self.stopwords_all = vocab_obj
+            else:
+                return False
+            return True
+        else:
+            return False
+
+    def _load_corpus_pkl(self, corpus_pkl):
+        # if the pickle file exists, load the corpus
+        if os.path.exists(corpus_pkl):
+            if self.verbose > 0:
+                print("Loading the processed file from " + corpus_pkl)
+                print(" (Delete the file if you want to re-process the corpus)")
+            corpus_data_list = cp.load(open(corpus_pkl, 'rb'))
+            if len(corpus_data_list) == 11:
+                self.corpus_df, self.nps, self.np2cnt, self.uid2sstt, \
+                self.sstt2uid, self.uid2segid, self.segid2uids, \
+                self.sid2labs_all, self.segid2lab_all, self.segid2lt, self.uid2lab_all = corpus_data_list
+
+                self.corpus_txt = list(self.corpus_df.text_cleaned)
+            else:
+                print("ERROR: Cannot load the corpus file." + corpus_pkl + " has different format!")
+                return False
+            return True
+        else:
+            return False
+
+
+    def _load_lab_pkl(self, label_pkl):
+        if os.path.exists(label_pkl):
+            if self.verbose > 0:
+                print("Loading labels file from " + label_pkl)
+                print(" (Delete the file if you want to re-generate the labels)")
+
+            lab_data_list = cp.load(open(label_pkl, 'rb'))
+            if len(lab_data_list) == 4:
+                self.lid2lab_all, self.lab2lid_all, \
+                self.ltid2lt, self.lt2ltid  = lab_data_list
+            else:
+                print("ERROR: Cannot load the label file." + label_pkl + " has different format!")
+                return False
+            return True
+        else:
+            return False
+
+    def clean_labels(self, min_sess_freq=20, label_mappings=None):
+        pass
+
+    def _update_session_labs(self, sid2labs, lab2lid_new, label_mappings, code_other):
+        sid2labs_new = {}
+        sid2lidarr_new = {}
+        for sessid in sid2labs:
+            labarr = np.zeros(self.n_labels, dtype=np.int8)
+            sid2labs_new[sessid] = []
+            for lab in sid2labs[sessid]:
+                if label_mappings.get(lab, None) is not None:
+                    lab = label_mappings[lab]
+                lid = lab2lid_new.get(lab, lab2lid_new[code_other])
+                #  To avoid appending the same txtlabels
+                if labarr[lid] == 0:
+                    labarr[lid] = 1
+                    sid2labs_new[sessid].append(lab)
+            # only save the sessions with labels
+            if np.sum(labarr) > 0:
+                sid2lidarr_new[sessid] = labarr
+        return sid2labs_new, sid2lidarr_new
+
+    def _update_segment_labs(self, segid2lab, lab2lid_new, segid2lt,
+                            label_mappings, code_other):
+        segid2lab_new = {}
+        segid2lid_new = {}
+        segid2lidarr = {}
+        segid2ltid = {}
+        for segid in segid2lab:
+            labarr = np.zeros(self.n_labels)
+            lab = segid2lab[segid]
+
+            # also update tletter
+            tletter = segid2lt[segid]
+            tltid = self.lt2ltid[tletter]
+
+            if label_mappings.get(lab, None) is not None:
+                lab = label_mappings[lab]
+            lid = lab2lid_new.get(lab, lab2lid_new[code_other])
+
+            segid2ltid[segid] = tltid
+            segid2lab_new[segid] = lab
+            labarr[lid] = 1
+            segid2lidarr[segid] = labarr
+            segid2lid_new[segid] = lid
+        return segid2lab_new, segid2lid_new, segid2lidarr, segid2ltid
+
+    def _update_utter_labs(self, uid2lab, lab2lid_new, label_mappings, code_other):
+        uid2lab_new = []
+        uid2lid_new = []
+        for uid, lab in enumerate(uid2lab):
+            if label_mappings.get(lab, None) is not None:
+                lab = label_mappings[lab]
+            lid = lab2lid_new.get(lab, lab2lid_new[code_other])
+            uid2lab_new.append(lab)
+            uid2lid_new.append(lid)
+        return uid2lab_new, uid2lid_new
+
+    def get_valid_data(self):
+        pass
+
+    def get_spkr_code(self, spkr, include_ra=False, include_nurse=False):
+        spkr = re.sub(r"[^A-Za-z]", "", spkr)
+        if re.match(r".*P[Tt].*", spkr) or re.match(r"[Pp]atient", spkr):
+            return self.spkr2spkrid["PT"]
+        elif re.match(r"clinician", spkr) or re.match(r".*MD.*", spkr):
+            return self.spkr2spkrid["MD"]
+        else:
+            if include_ra and re.match(r".*RA.*", spkr):
+                return self.spkr2spkrid["RA"]
+            if include_nurse and (re.match(r".*NURSE.*", spkr) or re.match(r".*RN.*", spkr)):
+                return self.spkr2spkrid["RN"]
+            return self.spkr2spkrid["OTHER"]
+
+    def get_spkr_list(self, uids, get_spkr_category, nested=True):
+        if nested: # if uids are nested
+            spkrs_list = []
+            for ses_uids in uids:
+                spkrs = map(get_spkr_category, map(str, self.corpus_df.iloc[ses_uids].speaker))
+                spkrs_list.append(spkrs)
+        else:
+            spkrs_list = map(get_spkr_category, map(str, self.corpus_df.iloc[uids].speaker))
+        return spkrs_list
+
+    def fit_bow(self, train_doc, tfidf=True, vocabulary=None, stop_words=None,
+                token_pattern=r"(?u)[A-Za-z\?\!\-\.']+", max_wlen=0):
+
+        if max_wlen == 0:
+            max_wlen = self.max_wlen
+
+        if vocabulary is None:
+            vocabulary = self.vocabulary
+
+        if stop_words is None:
+            stop_words = self.stopwords_all
+
+        if token_pattern != self.token_pattern:
+            token_pattern = self.token_pattern
+
+        if tfidf is True:
+            vectorizer = TfidfVectorizer(ngram_range=(1, max_wlen),
+                                         token_pattern=token_pattern,
+                                         stop_words=stop_words,
+                                         vocabulary=vocabulary)
+        else:
+            vectorizer = CountVectorizer(ngram_range=(1, max_wlen),
+                                         token_pattern=token_pattern,
+                                         stop_words=stop_words,
+                                         vocabulary=vocabulary)
+
+        train_bow = vectorizer.fit_transform(train_doc)
+        self.bow = train_bow
+        self.vectorizer = vectorizer
+        return train_bow, vectorizer
+
+    @staticmethod
+    def transform_bow(test_doc, vectorizer):
+        if test_doc is not None and len(test_doc) > 0:
+            return vectorizer.transform(test_doc)
+        else:
+            return np.array([])
+
+    @staticmethod
+    def get_nested_bow(nested_docs, vectorizer):
+        """
+        Works when nested_docs is a list[list[string]].
+        """
+        nested_bows = []
+        for doc in nested_docs:
+            nested_bows.append(MHDData.transform_bow(doc, vectorizer))
+        return nested_bows
+
+    def get_utter_level_data_from_sids(self, sesid_list):
+        """
+        Get nested data using a list of session IDs
+
+        Parameters
+        ----------
+        sesid_list
+
+        Returns
+        -------
+
+        """
+        ulists = []
+        docs = []
+        labs = []
+        for sesid in sesid_list:
+            tmp_uids = self.convert_docids_level([sesid], from_level='session', to_level='utterance',
+                                                 insert_st_end=False)
+            doc_tmp, lab_tmp, _ = self.get_utter_level_subset(tmp_uids, chunk_size=1, overlap=False)
+            ulists.append(tmp_uids)
+            docs.append(doc_tmp)
+            labs.append(lab_tmp)
+        return ulists, docs, labs
+
+    def convert_docids_level(self, ids_list, from_level='session', to_level='utterance',
+                             insert_st_end=False):
+        """
+
+        Parameters
+        ----------
+        ids_list
+        from_level
+        to_level
+        insert_st_end : bool
+            If True, -1 and -2 will be inserted for start and end of the session or segment
+            (depending on the 'from_level').
+
+        Returns
+        -------
+
+        """
+
+        def get_ulist(ids_list, orig_list_type='session', insert_st_end=False):
+            """ from session/segment to utterance"""
+            ulist = []
+            if orig_list_type == 'session':
+                for sid in ids_list:
+                    if insert_st_end:
+                        ulist.append(-1)
+                    for tt in self.sstt2uid[sid]:
+                        ulist.append(self.sstt2uid[sid][tt])
+                    if insert_st_end:
+                        ulist.append(-2)
+            elif orig_list_type == 'segment':
+                for segid in ids_list:
+                    if insert_st_end:
+                        ulist.append(-1)
+                    for uid in self.segid2uids[segid]:
+                        ulist.append(uid)
+                    if insert_st_end:
+                        ulist.append(-2)
+            else:
+                print "ERROR: [get_ulist] orig_list_type can be either 'session' or 'segment'!"
+                exit()
+            return ulist
+
+        def get_seglist(sids_list, insert_st_end=False):
+            """ from session to segment """
+            seglist = []
+            for sid in sids_list:
+                if insert_st_end:
+                    seglist.append(-1)
+                for segid in self.sid2segids[sid]:
+                    seglist.append(segid)
+                if insert_st_end:
+                    seglist.append(-2)
+            return seglist
+
+        if to_level == 'utterance':
+            return get_ulist(ids_list, orig_list_type=from_level, insert_st_end=insert_st_end)
+        elif to_level == 'segment':
+            return get_seglist(ids_list, insert_st_end=insert_st_end)
+        else:
+            print "ERROR: [convert_docids_level] to_level can be either 'utterance' or 'segment'!"
+            exit()
+
+    def get_utter_level_subset(self, uid_list, chunk_size=1, overlap=False):
+        """
+
+        Parameters
+        ----------
+        uid_list
+        chunk_size : int
+            size of the window/chunk. Unit : sentences
+        overlap : bool
+            Currently not supported
+
+        Returns
+        -------
+
+        """
+
+        text_list = []
+        lab_list = []
+        tmp_txt = []
+        new_uid_list = []
+        tmp_uids = []
+        labid = -1
+        prev_sid = 0
+        i = 0
+
+        for uid in uid_list:
+            segid = self.uid2segid[uid]
+            # Whenever you see a new segment or a new chunk,
+            # only when there is some text to save
+            if (len(tmp_txt) > 0) and (i % chunk_size == 0 or segid != prev_sid):
+                i = 0
+                text_list.append('|'.join(tmp_txt))
+                lab_list.append(labid)
+                if chunk_size > 1:
+                    new_uid_list.append(tmp_uids)
+                    tmp_uids = []
+                tmp_txt = []
+
+            if chunk_size > 1:
+                tmp_uids.append(uid)
+            tmp_txt.append(self.corpus_txt[uid])
+            if len(self.uid2lid) > uid:
+                labid = self.uid2lid[uid] #segid2lid[segid] # both could work
+            else:
+                labid = -1  # If there's no label, assign -1.
+            prev_sid = segid
+            i += 1
+
+        # Take care of the last one
+        if len(tmp_txt) > 0:
+            lab_list.append(labid)
+            text_list.append(' '.join(tmp_txt))
+
+        if chunk_size == 1:
+            new_uid_list = uid_list
+        elif chunk_size > 1 and len(tmp_txt) > 0:
+            new_uid_list.append(tmp_uids)
+
+        return text_list, lab_list, new_uid_list
+
+
+class MHDTrainData(MHDData):
 
     def __init__(self, data_file, nouns_only=False, ignore_case=True,
                  remove_numbers=False, sub_numbers=True, stopwords_dir="./stopwordlists",
                  label_mappings=None, ngram_range=(1,1), max_np_len=2, min_wlen=1,
                  min_dfreq=0.0, max_dfreq=0.9, min_sfreq=20,
-                 token_pattern=r"(?u)[A-Za-z\?\!\-\.']+",
+                 token_pattern=r"(?u)[A-Za-z\?\!\-\.']+", verbose=1,
                  corpus_pkl='./corpus.pkl', label_pkl='./label.pkl', vocab_pkl='./vocab.pkl'):
 
-        DialogData.__init__(self, data_file, nouns_only=nouns_only, ignore_case=ignore_case,
-                 remove_numbers=remove_numbers, sub_numbers=sub_numbers, stopwords_dir=stopwords_dir,
-                 label_mappings=label_mappings, ngram_range=ngram_range,
-                 max_np_len=max_np_len, min_wlen=min_wlen,
-                 min_dfreq=min_dfreq, max_dfreq=max_dfreq, min_sfreq=min_sfreq,
-                 token_pattern=token_pattern,
-                 corpus_pkl=corpus_pkl, label_pkl=label_pkl, vocab_pkl=vocab_pkl)
+        MHDData.__init__(self, data_file, nouns_only=nouns_only, ignore_case=ignore_case,
+                         remove_numbers=remove_numbers, sub_numbers=sub_numbers, stopwords_dir=stopwords_dir,
+                         label_mappings=label_mappings, ngram_range=ngram_range,
+                         max_np_len=max_np_len, min_wlen=min_wlen,
+                         min_dfreq=min_dfreq, max_dfreq=max_dfreq, min_sfreq=min_sfreq,
+                         token_pattern=token_pattern, verbose=verbose,
+                         corpus_pkl=corpus_pkl, label_pkl=label_pkl, vocab_pkl=vocab_pkl)
 
         cl_lab_pkl = label_pkl.split(".pkl")[0] + "_cleaned.pkl"
-        self.load_labels(min_sess_freq=min_sfreq, label_mappings=label_mappings)
+        self.clean_labels(min_sess_freq=min_sfreq, label_mappings=label_mappings)
         self._save_cleaned_lab_pkl(self.lid2lab, self.lab2lid, self.label_mappings, cl_lab_pkl)
         self.get_valid_data()
 
@@ -59,7 +515,8 @@ class MHDTrainData(DialogData):
 
     def get_valid_data(self):
         # Get session IDs and utterance IDs that both have the text and the labels
-        print("Getting lists of valid session/utterance IDs that have both text and labels")
+        if self.verbose > 0:
+            print("Getting lists of valid session/utterance IDs that have both text and labels")
 
         # First get the self.sid2segids
         sid2segids = {}
@@ -94,30 +551,14 @@ class MHDTrainData(DialogData):
         self.valid_segids = sorted(valid_segids)
         self.valid_uids = sorted(valid_uids)
 
-    def assign_codenames(self):
-        shortnames = ['BiomedHistorySymptom', 'MusSkePain', 'DizzyFallMemoryDentHearVision',
-                      'GynGenitoUrinary', 'Prognosis', 'TestDiagnostics', 'TherapeuticIntervention',
-                      'Medication', 'PreventiveCare', 'Diet',
-                      'Weight', 'Exercise', 'Alcohol', 'Sex', 'Cigarette',
-                      'OtherAddictions', 'Sleep', 'Death', 'Bereavement', 'PainSuffering',
-                      'Depression', 'GeneralAnxieties', 'HealthCareSystem', 'ActivityDailyLiving',
-                      'WorkLeisureActivity', 'Unemployment', 'MoneyBenefits', 'Caregiver', 'HomeEnv', 'Family',
-                      'Religion', 'Age', 'LivingWillAdvanceCarePlanning', 'MDLife', 'MDPT-Relationship',
-                      'SmallTalk', 'Other', 'VisitFlowManagement', 'PhysicalExam']
-        self.lab2shortname = {str(i + 1): shortnames[i] for i in range(len(shortnames))}
-
-
-    def assign_spkr_codes(self):
-        self.spkrid2spkr = ["MD", "PT", "OTHER"]
-        self.spkr2spkrid = {sp: i for i, sp in enumerate(self.spkrid2spkr)}
-
 
     def load_corpus(self, corpus_file, sep, min_wcnt=1, min_np_len=2, max_np_len=3,
                     token_pattern=r"(?u)\b\w[A-Za-z']*\b",
                     ignore_case=True, remove_numbers=False, sub_numbers=True, parser=None, stemmer_type=None,
                     corpus_pkl='./corpus.pkl', label_pkl='./labels.pkl', vocab_pkl='./vocab.pkl'):
 
-        print('Loading and preprocessing the corpus with labels')
+        if self.verbose > 0:
+            print('Loading and preprocessing the corpus with labels')
         if not (self._load_corpus_pkl(corpus_pkl) and self._load_vocab_pkl(vocab_pkl) and
                     self._load_lab_pkl(label_pkl)):
             uidx = 0
@@ -149,7 +590,8 @@ class MHDTrainData(DialogData):
             raw_df = raw_df[raw_df.topicnumber > 0]
             raw_df = raw_df[raw_df.visitid > 0]
 
-            print("  Cleaning the corpus (removing punctuations..)")
+            if self.verbose > 1:
+                print("  Cleaning the corpus (removing punctuations..)")
             for i in range(raw_df.shape[0]):
                 row = raw_df.iloc[i]
 
@@ -220,24 +662,29 @@ class MHDTrainData(DialogData):
             self.vocabulary_inv[i] = voc
 
 
-    def load_labels(self, min_sess_freq=20, label_mappings=None):
+    def clean_labels(self, min_sess_freq=20, label_mappings=None):
         """
-        Using this method to keep the parent class' format.
-        This function mainly does label cleaning since the labels are loaded with corpus.
-        """
-        self.lab2ltr = {'1': 'A', '2': 'A', '3': 'A', '4': 'A', '5': 'A', '6': 'A', '7': 'A',
-                        '8': 'A', '9': 'A', '10': 'B', '11': 'B', '12': 'B', '13': 'B', '14': 'B',
-                        '15': 'B', '16': 'B', '17': 'B', '18': 'C', '19': 'C', '20': 'C', '21': 'C',
-                        '22': 'C', '23': 'D', '24': 'D', '25': 'D', '26': 'D', '27': 'D', '28': 'D',
-                        '29': 'D', '30': 'D', '31': 'D', '32': 'D', '33': 'D', '34': 'E', '35': 'E',
-                        '36': 'F', '37': 'F', '38': 'G', '39': 'G'}
 
+        Parameters
+        ----------
+        min_sess_freq : int
+            Ignore labels that appear less than min_sess_freq times
+        label_mappings : dict or None
+            Label mappings can be given manually.
+
+        Returns
+        -------
+
+        """
+
+        if self.verbose > 0:
+            print("Cleaning labels ..")
         self.n_labels = len(self.lid2lab_all)
 
         # Clean labels (ignore labels that appear less than N times)
-        cleaned = self.clean_labels(self.lid2lab_all, self.lab2lid_all,
-                                    self.sid2labs_all, self.segid2lab_all, self.segid2lt,
-                                    self.uid2lab_all, min_sess_freq, label_mappings)
+        cleaned = self._clean_labels_inner(self.lid2lab_all, self.lab2lid_all,
+                                           self.sid2labs_all, self.segid2lab_all, self.segid2lt,
+                                           self.uid2lab_all, min_sess_freq, label_mappings)
 
         self.lid2lab, self.lab2lid = cleaned[0]
         self.sid2labs, self.sid2lidarr = cleaned[1]
@@ -247,8 +694,8 @@ class MHDTrainData(DialogData):
         self.lid2shortname = [self.lab2shortname[self.lid2lab[i]] for i in range(len(self.lid2lab))]
 
 
-    def clean_labels(self, lid2lab, lab2lid, sid2labs, segid2lab, segid2lt, uid2lab,
-                     min_sess_freq=10, label_mappings=None, print_mappings=True):
+    def _clean_labels_inner(self, lid2lab, lab2lid, sid2labs, segid2lab, segid2lt, uid2lab,
+                            min_sess_freq=10, label_mappings=None):
         """
         This function is based on Garren Gaut's work (matlab file 'loadlabels.m')
 
@@ -275,8 +722,6 @@ class MHDTrainData(DialogData):
             for lab in sorted(lab_map.keys()):
                 print("  %s %s --> %s %s" % (lab, self.lab2shortname.get(lab, "nan"),
                                              lab_map[lab], self.lab2shortname.get(lab_map[lab], "nan")))
-
-        print("Cleaning labels ..")
         # Can include more steps other than deleting less frequent labels
 
         # 1. Label mappings for merging labels (it does not create new labels)
@@ -311,7 +756,7 @@ class MHDTrainData(DialogData):
             # If mapping was not defined, map the rare labels to 'others'
             label_mappings = {self.lid2lab_all[lid]: code_other for lid in labids_to_merge}
 
-        if print_mappings:
+        if self.verbose > 1:
             print_label_mappings(label_mappings, np.sum(labmat, axis=0))
 
         lid2lab_new = [lid2lab[lid] for lid in labids_to_keep]
@@ -335,13 +780,13 @@ class MHDTrainData(DialogData):
             cp.dump(lab_data_to_save, f, protocol=cp.HIGHEST_PROTOCOL)
 
 
-class MHDTestData(DialogData):
+class MHDTestData(MHDData):
 
     def __init__(self, data_file, nouns_only=False, ignore_case=True,
                  remove_numbers=False, sub_numbers=True, stopwords_dir="./stopwordlists",
                  label_mappings=None, ngram_range=(1,1), max_np_len=2, min_wlen=1,
                  min_dfreq=0.0, max_dfreq=0.9, min_sfreq=10,
-                 token_pattern=r"(?u)[A-Za-z\?\!\-\.']+",
+                 token_pattern=r"(?u)[A-Za-z\?\!\-\.']+", verbose=1,
                  corpus_pkl='./corpus_test.pkl', tr_label_pkl="./label.pkl", tr_vocab_pkl="./vocab.pkl"):
 
         cl_lab_pkl = tr_label_pkl.split(".pkl")[0] + "_cleaned.pkl"
@@ -349,20 +794,20 @@ class MHDTestData(DialogData):
 
             self.has_label = False
 
-            DialogData.__init__(self, data_file, nouns_only=nouns_only, ignore_case=ignore_case,
-                     remove_numbers=remove_numbers, sub_numbers=sub_numbers, stopwords_dir=stopwords_dir,
-                     label_mappings=label_mappings, ngram_range=ngram_range,
-                     max_np_len=max_np_len, min_wlen=min_wlen,
-                     min_dfreq=min_dfreq, max_dfreq=max_dfreq, min_sfreq=min_sfreq,
-                     token_pattern=token_pattern,
-                     corpus_pkl=corpus_pkl, label_pkl="", vocab_pkl="")
+            MHDData.__init__(self, data_file, nouns_only=nouns_only, ignore_case=ignore_case,
+                             remove_numbers=remove_numbers, sub_numbers=sub_numbers, stopwords_dir=stopwords_dir,
+                             label_mappings=label_mappings, ngram_range=ngram_range,
+                             max_np_len=max_np_len, min_wlen=min_wlen,
+                             min_dfreq=min_dfreq, max_dfreq=max_dfreq, min_sfreq=min_sfreq,
+                             token_pattern=token_pattern, verbose=verbose,
+                             corpus_pkl=corpus_pkl, label_pkl="", vocab_pkl="")
 
             self.n_utters = len(self.uid2sstt)
             self.n_vocab = len(self.vocabulary)
             self.n_labels = len(self.lid2lab)
 
             # self.get_valid_data()
-            self.load_labels(min_sfreq, self.label_mappings)
+            self.clean_labels(min_sfreq, self.label_mappings)
 
             self.bow = None
             self.vectorizer = None
@@ -377,26 +822,13 @@ class MHDTestData(DialogData):
         print("Number of user-defined stopwords: %d" % len(self.stopwords))
         print("Number of stopwords used in total: %d (including the words with low dfs and high dfs)" % len(self.stopwords_all))
 
-
-    def assign_codenames(self):
-        shortnames = ['BiomedHistorySymptom', 'MusSkePain', 'DizzyFallMemoryDentHearVision',
-                      'GynGenitoUrinary', 'Prognosis', 'TestDiagnostics', 'TherapeuticIntervention',
-                      'Medication', 'PreventiveCare', 'Diet',
-                      'Weight', 'Exercise', 'Alcohol', 'Sex', 'Cigarette',
-                      'OtherAddictions', 'Sleep', 'Death', 'Bereavement', 'PainSuffering',
-                      'Depression', 'GeneralAnxieties', 'HealthCareSystem', 'ActivityDailyLiving',
-                      'WorkLeisureActivity', 'Unemployment', 'MoneyBenefits', 'Caregiver', 'HomeEnv', 'Family',
-                      'Religion', 'Age', 'LivingWillAdvanceCarePlanning', 'MDLife', 'MDPT-Relationship',
-                      'SmallTalk', 'Other', 'VisitFlowManagement', 'PhysicalExam']
-        self.lab2shortname = {str(i + 1): shortnames[i] for i in range(len(shortnames))}
-
-
     def load_corpus(self, corpus_file, sep, min_wcnt=1, min_np_len=2, max_np_len=3,
                     token_pattern=r"(?u)\b\w[A-Za-z']*\b",
                     ignore_case=True, remove_numbers=False, sub_numbers=True, parser=None, stemmer_type=None,
                     corpus_pkl='./corpus.pkl', label_pkl='./labels.pkl', vocab_pkl='./vocab.pkl'):
 
-        print('Loading and preprocessing the corpus with labels')
+        if self.verbose > 0:
+            print('Loading and preprocessing the corpus with labels')
         if not self._load_corpus_pkl(corpus_pkl):
             uidx = 0
             segidx = -1
@@ -428,7 +860,8 @@ class MHDTestData(DialogData):
                 raw_df = raw_df[raw_df.topicnumber > 0]
             raw_df = raw_df[raw_df.visitid > 0]
 
-            print("  Cleaning the corpus (removing punctuations..)")
+            if self.verbose > 1:
+                print("  Cleaning the corpus (removing punctuations..)")
             for i in range(raw_df.shape[0]):
                 row = raw_df.iloc[i]
 
@@ -482,8 +915,10 @@ class MHDTestData(DialogData):
                                   uid2segid, segid2uids, sid2labs_all, segid2lab,
                                   segid2lt, uid2lab, corpus_pkl)
 
+        # Set the extra variable 'has_label' when the data has the column 'topicnumber'
         if 'topicnumber' in self.corpus_df.columns:
             self.has_label = True
+
 
     def load_train_vocab_pkl(self, tr_vocab_pkl):
         if self._load_vocab_pkl(tr_vocab_pkl):
@@ -498,7 +933,8 @@ class MHDTestData(DialogData):
 
     def _load_cleaned_lab_pkl(self, cleaned_lab_pkl):
         if os.path.exists(cleaned_lab_pkl):
-            print("Loading cleaned labels file from " + cleaned_lab_pkl)
+            if self.verbose > 0:
+                print("Loading cleaned labels file from " + cleaned_lab_pkl)
 
             lab_data_list = cp.load(open(cleaned_lab_pkl, 'rb'))
             if len(lab_data_list) == 3:
@@ -514,27 +950,19 @@ class MHDTestData(DialogData):
         self.lid2lab = []
         return self._load_lab_pkl(tr_label_pkl) and self._load_cleaned_lab_pkl(cl_tr_label_pkl)
 
-
-    def load_labels(self, min_sess_freq=20, label_mappings=None):
+    def clean_labels(self, min_sess_freq=20, label_mappings=None):
         """
-        Using this method to keep the parent class' format.
-        This function mainly does label cleaning since the labels are loaded with corpus.
-        label_mappings argument is just a placeholder since it is using traindata's mappings.
+        For test data, all the parameters are redundant since it will use
+        the same label cleaning process that training data used.
         """
-        self.lab2ltr = {'1': 'A', '2': 'A', '3': 'A', '4': 'A', '5': 'A', '6': 'A', '7': 'A',
-                        '8': 'A', '9': 'A', '10': 'B', '11': 'B', '12': 'B', '13': 'B', '14': 'B',
-                        '15': 'B', '16': 'B', '17': 'B', '18': 'C', '19': 'C', '20': 'C', '21': 'C',
-                        '22': 'C', '23': 'D', '24': 'D', '25': 'D', '26': 'D', '27': 'D', '28': 'D',
-                        '29': 'D', '30': 'D', '31': 'D', '32': 'D', '33': 'D', '34': 'E', '35': 'E',
-                        '36': 'F', '37': 'F', '38': 'G', '39': 'G'}
-
-        # Clean labels (ignore labels that appear less than N times)
         if self.has_label:
             if label_mappings is None:
                 label_mappings = self.label_mappings
 
-            cleaned = self.clean_labels(self.sid2labs_all, self.segid2lab_all, self.segid2lt,
-                                        self.uid2lab_all, min_sess_freq, label_mappings)
+            if self.verbose > 0:
+                print("Cleaning labels ..")
+            cleaned = self._clean_labels_inner(self.sid2labs_all, self.segid2lab_all, self.segid2lt,
+                                               self.uid2lab_all, label_mappings)
 
             self.sid2labs, self.sid2lidarr = cleaned[0]
             self.segid2lab, self.segid2lid, self.segid2lidarr, self.segid2ltid = cleaned[1]
@@ -542,40 +970,23 @@ class MHDTestData(DialogData):
 
         self.lid2shortname = [self.lab2shortname[self.lid2lab[i]] for i in range(len(self.lid2lab))]
 
-
-    def clean_labels(self, sid2labs, segid2lab, segid2lt, uid2lab,
-                     min_sess_freq=10, label_mappings=None, print_mappings=True):
+    def _clean_labels_inner(self, sid2labs, segid2lab, segid2lt, uid2lab,
+                            label_mappings=None):
         """
         Skips the step where it defines the label mappings (by removing the rare topics.)
         Instead it uses the label mappings from the train data (that were loaded by pkl file).
         This function is only performed when the test data has labels.
-
-        Parameters
-        ----------
-        sid2labs
-        segid2lab
-        segid2lt
-        uid2lab
-        min_sess_freq
-        label_mappings
-        print_mappings
-
-        Returns
-        -------
-
         """
+
         def print_label_mappings(lab_map):
             for lab in sorted(lab_map.keys()):
                 print("  %s %s --> %s %s" % (lab, self.lab2shortname.get(lab, "nan"),
                                              lab_map[lab], self.lab2shortname.get(lab_map[lab], "nan")))
 
-        print("Cleaning labels ..")
-
-        if print_mappings:
+        if self.verbose > 1:
             print_label_mappings(label_mappings)
 
         code_other = '37'
-
         # update session-level, segment-level, utterance-level label data
         sid_labs = self._update_session_labs(sid2labs, self.lab2lid,
                                              label_mappings, code_other)

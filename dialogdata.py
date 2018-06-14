@@ -7,13 +7,14 @@ from collections import defaultdict
 import numpy as np
 import pandas as pd
 import cPickle as cp
+import re
 
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 
 import preprocess as preproc
 
 
-class DialogData():
+class MHDData():
 
     def __init__(self, data_file, nouns_only=False, ignore_case=True,
                  remove_numbers=False, sub_numbers=True, stopwords_dir="./stopwordlists",
@@ -23,6 +24,7 @@ class DialogData():
                  corpus_pkl='./corpus.pkl', label_pkl='./label.pkl', vocab_pkl='./vocab.pkl'):
 
         self.n_labels = 0
+        self.uid2lid = []
 
         self.data_file = data_file
         self.nouns_only = nouns_only
@@ -234,6 +236,31 @@ class DialogData():
         pass
 
 
+
+    def get_spkr_code(self, spkr, include_ra=False, include_nurse=False):
+        spkr = re.sub(r"[^A-Za-z]", "", spkr)
+        if re.match(r".*P[Tt].*", spkr) or re.match(r"[Pp]atient", spkr):
+            return self.spkr2spkrid["PT"]
+        elif re.match(r"clinician", spkr) or re.match(r".*MD.*", spkr):
+            return self.spkr2spkrid["MD"]
+        else:
+            if include_ra and re.match(r".*RA.*", spkr):
+                return self.spkr2spkrid["RA"]
+            if include_nurse and (re.match(r".*NURSE.*", spkr) or re.match(r".*RN.*", spkr)):
+                return self.spkr2spkrid["RN"]
+            return self.spkr2spkrid["OTHER"]
+
+    def get_spkr_list(self, uids, get_spkr_category, nested=True):
+        if nested: # if uids are nested
+            spkrs_list = []
+            for ses_uids in uids:
+                spkrs = map(get_spkr_category, map(str, self.corpus_df.iloc[ses_uids].speaker))
+                spkrs_list.append(spkrs)
+        else:
+            spkrs_list = map(get_spkr_category, map(str, self.corpus_df.iloc[uids].speaker))
+        return spkrs_list
+
+
     def fit_bow(self, train_doc, tfidf=True, vocabulary=None, stop_words=None,
                 token_pattern=r"(?u)[A-Za-z\?\!\-\.']+", max_wlen=0):
 
@@ -279,5 +306,153 @@ class DialogData():
         """
         nested_bows = []
         for doc in nested_docs:
-            nested_bows.append(DialogData.transform_bow(doc, vectorizer))
+            nested_bows.append(MHDData.transform_bow(doc, vectorizer))
         return nested_bows
+
+
+    def get_utter_level_data_from_sids(self, sesid_list):
+        """
+        Get nested data using session IDs
+
+        Parameters
+        ----------
+        sesid_list
+
+        Returns
+        -------
+
+        """
+        ulists = []
+        docs = []
+        labs = []
+        for sesid in sesid_list:
+            tmp_uids = self.convert_docids_level([sesid], from_level='session', to_level='utterance',
+                                                 insert_st_end=False)
+            doc_tmp, lab_tmp, _ = self.get_utter_level_subset(tmp_uids, chunk_size=1, overlap=False)
+            ulists.append(tmp_uids)
+            docs.append(doc_tmp)
+            labs.append(lab_tmp)
+        return ulists, docs, labs
+
+
+    def convert_docids_level(self, ids_list, from_level='session', to_level='utterance',
+                             insert_st_end=False):
+        """
+
+        Parameters
+        ----------
+        ids_list
+        from_level
+        to_level
+        insert_st_end : bool
+            If True, -1 and -2 will be inserted for start and end of the session or segment
+            (depending on the 'from_level').
+
+        Returns
+        -------
+
+        """
+
+        def get_ulist(ids_list, orig_list_type='session', insert_st_end=False):
+            """ from session/segment to utterance"""
+            ulist = []
+            if orig_list_type == 'session':
+                for sid in ids_list:
+                    if insert_st_end:
+                        ulist.append(-1)
+                    for tt in self.sstt2uid[sid]:
+                        ulist.append(self.sstt2uid[sid][tt])
+                    if insert_st_end:
+                        ulist.append(-2)
+            elif orig_list_type == 'segment':
+                for segid in ids_list:
+                    if insert_st_end:
+                        ulist.append(-1)
+                    for uid in self.segid2uids[segid]:
+                        ulist.append(uid)
+                    if insert_st_end:
+                        ulist.append(-2)
+            else:
+                print "ERROR: [get_ulist] orig_list_type can be either 'session' or 'segment'!"
+                exit()
+            return ulist
+
+        def get_seglist(sids_list, insert_st_end=False):
+            """ from session to segment """
+            seglist = []
+            for sid in sids_list:
+                if insert_st_end:
+                    seglist.append(-1)
+                for segid in self.sid2segids[sid]:
+                    seglist.append(segid)
+                if insert_st_end:
+                    seglist.append(-2)
+            return seglist
+
+        if to_level == 'utterance':
+            return get_ulist(ids_list, orig_list_type=from_level, insert_st_end=insert_st_end)
+        elif to_level == 'segment':
+            return get_seglist(ids_list, insert_st_end=insert_st_end)
+        else:
+            print "ERROR: [convert_docids_level] to_level can be either 'utterance' or 'segment'!"
+            exit()
+
+    def get_utter_level_subset(self, uid_list, chunk_size=1, overlap=False):
+        """
+
+        Parameters
+        ----------
+        uid_list
+        chunk_size : int
+            size of the window/chunk. Unit : sentences
+        overlap : bool
+            Currently not supported
+
+        Returns
+        -------
+
+        """
+
+        text_list = []
+        lab_list = []
+        tmp_txt = []
+        new_uid_list = []
+        tmp_uids = []
+        labid = -1
+        prev_sid = 0
+        i = 0
+
+        for uid in uid_list:
+            segid = self.uid2segid[uid]
+            # Whenever you see a new segment or a new chunk,
+            # only when there is some text to save
+            if (len(tmp_txt) > 0) and (i % chunk_size == 0 or segid != prev_sid):
+                i = 0
+                text_list.append('|'.join(tmp_txt))
+                lab_list.append(labid)
+                if chunk_size > 1:
+                    new_uid_list.append(tmp_uids)
+                    tmp_uids = []
+                tmp_txt = []
+
+            if chunk_size > 1:
+                tmp_uids.append(uid)
+            tmp_txt.append(self.corpus_txt[uid])
+            if len(self.uid2lid) > uid:
+                labid = self.uid2lid[uid] #segid2lid[segid] # both could work
+            else:
+                labid = -1
+            prev_sid = segid
+            i += 1
+
+        # Take care of the last one
+        if len(tmp_txt) > 0:
+            lab_list.append(labid)
+            text_list.append(' '.join(tmp_txt))
+
+        if chunk_size == 1:
+            new_uid_list = uid_list
+        elif chunk_size > 1 and len(tmp_txt) > 0:
+            new_uid_list.append(tmp_uids)
+
+        return text_list, lab_list, new_uid_list

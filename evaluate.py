@@ -1,3 +1,6 @@
+__author__ = 'Jihyun Park'
+__email__ = 'jihyunp@uci.edu'
+
 import numpy as np
 from utils import get_lab_arr, save_sq_mat_with_labels, get_marginals
 from sklearn.metrics import precision_score, recall_score, roc_auc_score, f1_score, confusion_matrix
