@@ -352,11 +352,6 @@ class HMMDialogModel(DialogModel):
         self.log_transitions = get_transition_mat(labs_tr, self.n_labels,
                                                   proportional_prior=True, prior_sum=0.5, log=True)
 
-        # log_spkr_transitions = get_spkr_transition_mat(labs_tr, spkr_tr,
-        #                                                self.n_labels, get_patient_mat=False,
-        #                                                proportional_prior=True, prior_sum=0.5, log=True)
-        # self.log_transitions_md = log_spkr_transitions["MD_trans_mat"]
-        # self.log_transitions_oth = log_spkr_transitions["OTH_trans_mat"]
 
         self.start_prob, self.end_prob = get_start_end_prob(labs_tr, self.n_labels)
         self.log_start_prob = np.log(self.start_prob)
@@ -399,14 +394,6 @@ class HMMDialogModel(DialogModel):
 
             vit_res.append(viterbi(log_emissions, self.log_transitions,
                                    self.log_start_prob, self.log_end_prob))
-
-            # if spkr_transitions:
-            #     vit_res.append(viterbi_with_multiple_transitions(log_emissions, np.array(self.splits.spkr_te[sidx]),
-            #                                                      [self.log_transitions_md, self.log_transitions_oth],
-            #                                                      self.log_start_prob, self.log_end_prob))
-            # else:
-            #     vit_res.append(viterbi(log_emissions, self.log_transitions,
-            #                            self.log_start_prob, self.log_end_prob))
 
         yhats = [s[1] for s in vit_res]
         output_scores = [s[0] for s in vit_res]
