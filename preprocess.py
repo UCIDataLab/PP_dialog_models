@@ -10,7 +10,8 @@ from collections import defaultdict
 
 from sklearn.feature_extraction.text import CountVectorizer
 
-def remove_punc(rawtext, ignore_case=False, remove_numbers=False, sub_numbers=True, mhddata=False):
+def remove_punc(rawtext, ignore_case=False, remove_numbers=False, sub_numbers=True,
+                names_list=set(), locations_list=set(), is_mhddata=False):
     """
 
     Parameters
@@ -22,6 +23,9 @@ def remove_punc(rawtext, ignore_case=False, remove_numbers=False, sub_numbers=Tr
     sub_numbers: bool
         Substitutes all numbers to a token -num-.
         if 'remove_numbers' is True, it will have no effect.
+    is_mhddata: bool
+        True if the data is MHD
+        False if it's from some other dataset
 
     Returns
     -------
@@ -50,13 +54,23 @@ def remove_punc(rawtext, ignore_case=False, remove_numbers=False, sub_numbers=Tr
     CONTRACTIONS3 = [re.compile(r"(?i) ('t)(is)\b"),
                      re.compile(r"(?i) ('t)(was)\b")]
 
-
-    # TODO : Might have to modify the regular expressions below
-    # For names
     txt = re.sub(r'[\[\{\(\<]patient name[\]\}\)\>]', ' -name- ', rawtext)
+    # For proper names and location.
+    # Couldn't use string match since it might be part of other words therefore using regex
+    # Takes forever!! we use dict at the end
+    # for lc in locations_list:
+    #     txt = re.sub(r"\b" + re.escape(lc) + r"\b", "-location-", txt)
+    # for n in names_list:
+    #     txt = re.sub(r"\b" + re.escape(n) + r"\b", "-name-", txt)
 
-    # First remove all parentheses and brackets
-    txt = re.sub(r'[\[\{\(\<][^\[\{\(\<]*[\]\}\)\>]', ' ', txt)
+    # Laugh
+    txt = re.sub(r'[\[\{\(\<]laugh[ter]*[\]\}\)\>]', ' -laugh- ', txt)
+
+    # Delete brackets (also contents inside the brackets)
+    txt = re.sub(r'[\[\{\<][^\[\{\<]*[\]\}\>]', ' ', txt)
+
+    # Remove parentheses, while leaving the contents inside.
+    txt = re.sub(r'[\(\)]', ' ', txt)
 
     if remove_numbers:
         # remove everything except for alpha characters and ', -, ?, !, .
@@ -70,7 +84,7 @@ def remove_punc(rawtext, ignore_case=False, remove_numbers=False, sub_numbers=Tr
         if sub_numbers:
             txt = re.sub(r'[0-9]+', '-num-', txt)
 
-    if mhddata:
+    if is_mhddata:
         # Replace non-ascii characters (for now just replace one)
         txt = re.sub("\x92", "'", txt)
         txt = re.sub("í", "'", txt)
@@ -95,6 +109,10 @@ def remove_punc(rawtext, ignore_case=False, remove_numbers=False, sub_numbers=Tr
     txt = re.sub(r' \-\-* ', ' ', txt)
     # remove -- these (consecutive dashes)
     txt = re.sub(r'\-\-+', ' ', txt)
+    # remove dashes in the words that start with a dash or end with a dash
+    # (Note: words that start AND end with single dashes are meaningful tokens.)
+    txt = re.sub(r"\-([A-Za-z\']+)\s", r"\1 ", txt)
+    txt = re.sub(r"\s([A-Za-z\']+)\-", r" \1", txt)
 
     #add extra space to make things easier
     txt = " " + txt + " "
@@ -115,18 +133,44 @@ def remove_punc(rawtext, ignore_case=False, remove_numbers=False, sub_numbers=Tr
 
     txt = re.sub(r'\s+', ' ', txt) # make multiple white spaces into 1
 
-    return txt.strip()
+    tokenized = txt.strip().split()  # tokenized temporarily to check proper nouns
+    for i, w in enumerate(tokenized):
+        if w in names_list:
+            tokenized[i] = '-name-'
+        # considers up to bigrams. First looks up if there is a match in bigrams. if not, checks unigram
+        if i < len(tokenized)-1 and ' '.join(tokenized[i:i+2]) in locations_list:
+            tokenized[i] = '-location-'
+            del(tokenized[i+1])
+        elif w in locations_list:
+            tokenized[i] = '-location-'
+    return ' '.join(tokenized)
+
+
+def read_words(file_path='./stopwordlists/locations.txt', ignore_case=True):
+    pns = set()
+    if os.path.isfile(file_path):
+        with open(file_path, 'r') as f:
+            reader = csv.reader(f, delimiter=" ")
+            for line in reader:
+                w = " ".join(line)
+                if ignore_case:
+                    w = w.lower()
+                pns.add(w)
+    else:
+        print("WARNING: file "+ file_path +" does not exist. Skipping..")
+    return pns
 
 
 def define_vocabulary(doc, stopwords=None, token_pattern=r"(?u)[A-Za-z\?\!\-\.']+",
                             ngram_range=(1,2), min_dfreq=0.0001, max_dfreq=0.9,
                             min_np_len=2, max_np_len=3, ignore_case=False,
-                            parser=None, stemmer_type=None):
+                            parser=None, stemmer_type=None, verbose=2):
 
     vocab, stw_all, tokenizer = define_vocabulary_inner(doc, stopwords, token_pattern,
                                                         ngram_range, min_dfreq, max_dfreq)
     if min_np_len > 1:
-        print("  Extracting noun phrases..")
+        if verbose > 1:
+            print("  Extracting noun phrases..")
         corpus_pos, np2cnt = get_noun_phrase_counts(doc, tokenizer,
                                                     min_np_len, max_np_len, stw_all,
                                                     ignore_case, parser, stemmer_type)
@@ -281,13 +325,14 @@ def get_stopwords(stopwords_dir='./stopwordlists'):
     stopwords = set()
     if os.path.isdir(stopwords_dir):
         for fname in os.listdir(stopwords_dir):
-            if fname.split(".")[-1] == "txt":
+            if fname.split(".")[-1] == "txt" and fname.startswith("stopword"):
                 fpath = os.path.join(stopwords_dir, fname)
                 if os.path.exists(fpath):
                     with open(fpath, 'r') as f:
                         reader = csv.reader(f, delimiter="\t")
                         for line in reader:
                             stopwords.add(' '.join(line).decode('utf-8'))
-
+    else:
+        print("ERROR: directory "+ stopwords_dir+" does not exist!")
     return stopwords
 
