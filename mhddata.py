@@ -15,16 +15,167 @@ import preprocess as preproc
 
 
 class MHDData():
+    """
+    Base class for MHD Data
+
+    Vocabulary Related Variables
+    ----------------------------
+    n_vocab : int
+        Size of vocabulary
+        (including noun phrases and N-grams, depending on the parameters)
+    vocabulary : set[str]
+    stopwords_all : set[str]
+        A set of stopwords, including the user-defined ones and the ones that are
+        very rare or common (those are taken out by min_df and max_df parameters)
+    stopwords : set[str]
+        A set of user-defined stopwords
+    nps : set[str]
+        A set of noun phrases
+    np2cnt : dict[str, int]
+        A dictionary that has noun phrases to its counts
+
+
+    Label Related Variables
+    -----------------------
+    n_labels : int
+        Number of labels after cleaning/merging
+
+    lid2lab_all : list[str]
+        A list of labels. Indices are the label IDs.
+        '_all' means that these are the list of labels 'before' cleaning.
+        Cleaned (merged) version of this label is 'lid2lab'.
+        Labels are topic code, which ranges from '1' ~ '39'.
+    lab2lid_all : dict[str,int]
+        Reverse map of lid2lab_all
+    lid2lab : list[str]
+        The same type of information as lid2lab_all 'after' cleaning/merging the data.
+        Mapping between label ID/index to label can be different from that of lid2lab_all.
+    lab2lid : dict[str,int]
+        Reverse map of lid2lab
+    lab2name : dict[str, str]
+        Label to shortnames. 'lab' refers to 'topic code', which ranges from '1'~'39'.
+    lid2name : dict[int, str]
+        Label ID/IDX (after cleaning labels) to its shortname mapping
+    lab2ltr : dict[str, str]
+        Label (topic code) to topic letters. Topic letters range from 'A' ~ 'G'
+    ltid2lt : list
+        A list of Topic letters. Where indices are the IDs of those topic letters
+    lt2ltid : dict[str, int]
+        Reverse mapping of ltid2lt
+
+
+    Corpus related variables
+    ------------------------
+    * uid : unique identifier of an utterance starts from 0
+    * sid : unique identifier of a session. 5 digits.
+    * tt/talkturn : index of each talkturn/utterance within each session.
+                    This field exists in the original data, and it starts from 0 at
+                    the beginning of each session.
+    * segid : unique identifier of a segment. A segment is a consecutive list of
+              utterances that share the same label.
+
+    n_utters : int
+        Number of utterances that we are using.
+
+    uid2sstt : dict[int, dict[int, int]]
+        Dictionary that maps utterance ID to its [sessionID, TalkturnID]
+    sstt2uid : dict[dict[int, int], int]
+        Dictionary that maps [sessionID, talkturnID] to the utterance IDs
+    uid2segid : dict[int, int]
+        Maps to utterance ID to segment ID
+    segid2uids : dict[int, list[int]]
+        Dictionary that maps segment ID to the list of utterance IDs who belongs to the segment.
+
+    corpus_df : pd.DataFrame
+        Pandas dataframe that has all the data. (except for the cleaned version of labels)
+    corpus_txt : list[str]
+        List of utterances (flattened), where each index is the utterance ID
+        It is a mapping from uid to cleaned text of that utterance.
+
+    segid2lab_all : dict[int, str]
+        Mapping between the segment id to the label (topic code), before label cleaning
+    segid2lab : dict[int, str]
+        Same as above, after label cleaning.
+    uid2lab_all : dict[int, str]
+        Mapping between the utterance id to the label (topic code), before label cleaning
+    uid2lab : dict[int, str]
+        same as above, after label cleaning
+    uid2lid : dict[int, int]
+        Mapping between the utterance ID to the label ID
+
+
+    Others
+    ------
+    spkrid2spkr : list[str]
+        A List that maps from speaker ID/index to speaker
+    spkr2spkrid : dict[str,int]
+        Reverse map of .spkrid2spkr
+
+    """
 
     def __init__(self, data_file, nouns_only=False, ignore_case=True,
-                 remove_numbers=False, sub_numbers=True, stopwords_dir="./stopwordlists",
+                 remove_numbers=False, sub_numbers=True,
+                 stopwords_dir="./stopwordlists", proper_nouns_dir="./stopwordlists",
                  label_mappings=None, ngram_range=(1,2), max_np_len=3, min_wlen=1,
                  min_dfreq=0.0001, max_dfreq=0.9, min_sfreq=5,
                  token_pattern=r"(?u)[A-Za-z\?\!\-\.']+", verbose=1,
                  corpus_pkl='./corpus.pkl', label_pkl='./label.pkl', vocab_pkl='./vocab.pkl'):
+        """
 
-        self.n_labels = 0
-        self.uid2lid = []
+        Parameters
+        ----------
+        data_file : str
+            File path to the data
+        nouns_only : bool
+            Only include nouns
+        ignore_case : bool
+            True if ignoring cases (transformed to all lower case, default)
+        remove_numbers : bool
+            Remove all digits if True, default is False
+        sub_numbers : bool
+            Rather than removing all digits, substitute them to symbol -num-. default True
+        stopwords_dir : str
+            Path to the stopwords directory
+        proper_nouns_dir : str
+            Path to the proper nouns directory
+        label_mappings : dict or None
+            Label mappings that can be use for label merging/cleaning.
+            If None (default), rare labels are mapped to the 'Other' label (topic code: '37')
+        ngram_range : tuple
+            The lower and upper boundary of the range of n-values for different n-grams
+            to be extracted. (Maximum length of noun phrase can be different from this.)
+        max_np_len : int
+            Maximum length of noun phrases to be considered.
+        min_wlen : int
+            Minimum word length of an utterance to be considered.
+            If an utterance has word length less than 'min_wlen', the utterance is skipped.
+        min_dfreq : float
+            float in range [0.0, 1.0]
+            When building the vocabulary ignore terms that have
+            a document frequency strictly lower than the given threshold.
+            The parameter represents a proportion of documents, integer absolute counts.
+            NOTE: Here, each utterance is treated as a document, therefore very small value would
+            still reduce the size of vocabulary. Because the utterances are very short therefore most of the words have very
+            small document frequencies.
+        max_dfreq : float
+            float in range [0.0, 1.0]
+            When building the vocabulary ignore terms that have a document frequency strictly higher than
+            the given threshold (corpus-specific stop words).
+            The parameter represents a proportion of documents, integer absolute counts.
+        min_sfreq : int
+            If there are labels that appear less than this number of sessions,
+            the labels are merged to the 'other' label (topic code: '37')
+        token_pattern : str
+            Regular expression denoting what constitutes a 'token'.
+        verbose : int in range [0,3]
+            The level of verbosity. Larger value means more verbosity.
+        corpus_pkl : str
+            Path to the pickle file that saves corpus related data.
+        label_pkl : str
+            Path to the pickle file that saves label related data.
+        vocab_pkl : str
+            Path to the pickle file that saves vocab related data.
+        """
         self.verbose = verbose
 
         self.data_file = data_file
@@ -38,9 +189,7 @@ class MHDData():
             self.max_np_len = 1
         else:
             self.max_np_len = min(2, max_np_len)
-
         self.max_wlen = max(self.ngram_range[-1], self.max_np_len)
-
         self.token_pattern = token_pattern
 
         self.stopwords = preproc.get_stopwords(stopwords_dir=stopwords_dir)
@@ -50,13 +199,19 @@ class MHDData():
                          min_np_len=self.max_np_len, max_np_len=max_np_len,
                          token_pattern=token_pattern,
                          ignore_case=ignore_case, remove_numbers=remove_numbers,
-                         sub_numbers=sub_numbers,
+                         sub_numbers=sub_numbers, proper_nouns_dir=proper_nouns_dir,
                          corpus_pkl=corpus_pkl, label_pkl=label_pkl, vocab_pkl=vocab_pkl)
 
         self.assign_labnames()
+
         self.assign_spkr_codes()
 
     def assign_labnames(self):
+        """
+        Assigns short names for each topic code.
+        Original topic code ranges from 1~39.
+        Topic codes are called as 'lab', and they are treated as strings.
+        """
         shortnames = ['BiomedHistorySymptom', 'MusSkePain', 'DizzyFallMemoryDentHearVision',
                       'GynGenitoUrinary', 'Prognosis', 'TestDiagnostics', 'TherapeuticIntervention',
                       'Medication', 'PreventiveCare', 'Diet',
@@ -66,7 +221,7 @@ class MHDData():
                       'WorkLeisureActivity', 'Unemployment', 'MoneyBenefits', 'Caregiver', 'HomeEnv', 'Family',
                       'Religion', 'Age', 'LivingWillAdvanceCarePlanning', 'MDLife', 'MDPT-Relationship',
                       'SmallTalk', 'Other', 'VisitFlowManagement', 'PhysicalExam']
-        self.lab2shortname = {str(i + 1): shortnames[i] for i in range(len(shortnames))}
+        self.lab2name = {str(i + 1): shortnames[i] for i in range(len(shortnames))}
         self.lab2ltr = {'1': 'A', '2': 'A', '3': 'A', '4': 'A', '5': 'A', '6': 'A', '7': 'A',
                         '8': 'A', '9': 'A', '10': 'B', '11': 'B', '12': 'B', '13': 'B', '14': 'B',
                         '15': 'B', '16': 'B', '17': 'B', '18': 'C', '19': 'C', '20': 'C', '21': 'C',
@@ -75,16 +230,37 @@ class MHDData():
                         '36': 'F', '37': 'F', '38': 'G', '39': 'G'}
 
     def assign_spkr_codes(self):
-        self.spkrid2spkr = ["MD", "PT", "OTHER"]
+        """
+        Assigns speaker codes.
+        """
+        self.spkrid2spkr = ["MD", "PT", "OTHER", "RA", "RN"]
         self.spkr2spkrid = {sp: i for i, sp in enumerate(self.spkrid2spkr)}
 
     def load_corpus(self, corpus_file, sep, min_wcnt=1, min_np_len=2, max_np_len=3,
                     token_pattern=r"(?u)\b\w[A-Za-z']*\b",
                     ignore_case=True, remove_numbers=False, sub_numbers=True, parser=None, stemmer_type=None,
+                    proper_nouns_dir="./stopwordlists",
                     corpus_pkl='./corpus.pkl', label_pkl='./labels.pkl', vocab_pkl='./vocab.pkl'):
+        """
+        Train and test data will have slightly different function.
+        """
         pass
 
     def _save_lab_pkl(self, lid2lab_all, segid2lt, label_pkl):
+        """
+        Saves label related data to a pickle file. (before cleaning)
+
+        Parameters
+        ----------
+        lid2lab_all : list
+            Label
+        segid2lt
+        label_pkl
+
+        Returns
+        -------
+
+        """
         lid2lab_all = sorted(list(lid2lab_all))
         lab2lid_all = {ll: i for i, ll in enumerate(lid2lab_all)}
 
@@ -195,6 +371,11 @@ class MHDData():
         pass
 
     def _update_session_labs(self, sid2labs, lab2lid_new, label_mappings, code_other):
+        """
+        Used inside of clean_labels.
+        Update the old set of session-level label information
+        to the new using 'label_mappings'
+        """
         sid2labs_new = {}
         sid2lidarr_new = {}
         for sessid in sid2labs:
@@ -215,6 +396,11 @@ class MHDData():
 
     def _update_segment_labs(self, segid2lab, lab2lid_new, segid2lt,
                             label_mappings, code_other):
+        """
+        Used inside of clean_labels.
+        Update the old set of segment-level label information
+        to the new using 'label_mappings'
+        """
         segid2lab_new = {}
         segid2lid_new = {}
         segid2lidarr = {}
@@ -239,6 +425,11 @@ class MHDData():
         return segid2lab_new, segid2lid_new, segid2lidarr, segid2ltid
 
     def _update_utter_labs(self, uid2lab, lab2lid_new, label_mappings, code_other):
+        """
+        Used inside of clean_labels.
+        Update the old set of utterance-level label information
+        to the new using 'label_mappings'
+        """
         uid2lab_new = []
         uid2lid_new = []
         for uid, lab in enumerate(uid2lab):
@@ -253,6 +444,29 @@ class MHDData():
         pass
 
     def get_spkr_code(self, spkr, include_ra=False, include_nurse=False):
+        """
+        Given a string, returns an ID of the speaker.
+        String that describes speaker can be a bit noisy in the raw data,
+        this function cleans and assigns the ID.
+
+        Parameters
+        ----------
+        spkr : str
+            Description of a speaker, or a speaker type in string.
+            (e.g. PT, patient, clinician, RA, etc.)
+        include_ra : bool
+            True if you want to treat RA as a separate speaker
+            Default is False. If False, the RA will have the code for OTHERS.
+        include_nurse : bool
+            True if you want to treat RN as a separate speaker
+            Default is False. If False, the RN will have the code for OTHERS.
+
+        Returns
+        -------
+        int
+            ID of a speaker
+
+        """
         spkr = re.sub(r"[^A-Za-z]", "", spkr)
         if re.match(r".*P[Tt].*", spkr) or re.match(r"[Pp]atient", spkr):
             return self.spkr2spkrid["PT"]
@@ -266,6 +480,26 @@ class MHDData():
             return self.spkr2spkrid["OTHER"]
 
     def get_spkr_list(self, uids, get_spkr_category, nested=True):
+        """
+        Given a list of utterance IDs, and
+        the function 'get_spkr_code' with appropriate parameters
+        to get the list of speaker IDs of those utterances.
+
+        Parameters
+        ----------
+        uids : list[int] or list[list[int]]
+            list of utterances.
+            It can be nested or flattened.
+        get_spkr_category : method
+            self.get_spkr_code method with appropriate arguments
+        nested : bool
+            True if nested.
+
+        Returns
+        -------
+        list[int]
+            List of speaker IDs.
+        """
         if nested: # if uids are nested
             spkrs_list = []
             for ses_uids in uids:
@@ -277,6 +511,22 @@ class MHDData():
 
     def fit_bow(self, train_doc, tfidf=True, vocabulary=None, stop_words=None,
                 token_pattern=r"(?u)[A-Za-z\?\!\-\.']+", max_wlen=0):
+        """
+        Fit bag of words or TF-IDF
+
+        Parameters
+        ----------
+        train_doc
+        tfidf
+        vocabulary
+        stop_words
+        token_pattern
+        max_wlen
+
+        Returns
+        -------
+
+        """
 
         if max_wlen == 0:
             max_wlen = self.max_wlen
@@ -302,8 +552,6 @@ class MHDData():
                                          vocabulary=vocabulary)
 
         train_bow = vectorizer.fit_transform(train_doc)
-        self.bow = train_bow
-        self.vectorizer = vectorizer
         return train_bow, vectorizer
 
     @staticmethod
@@ -350,19 +598,25 @@ class MHDData():
     def convert_docids_level(self, ids_list, from_level='session', to_level='utterance',
                              insert_st_end=False):
         """
+        Given a list of session or segment IDs, convert them to a list of
+        corresponding segment IDs or utterance IDs.
 
         Parameters
         ----------
-        ids_list
-        from_level
-        to_level
+        ids_list : list[int]
+            List of session IDs or segment IDs
+        from_level : str
+            Either 'session' or 'segment'
+        to_level : str
+            Either 'segment' or 'utterance'
         insert_st_end : bool
             If True, -1 and -2 will be inserted for start and end of the session or segment
             (depending on the 'from_level').
+            (Not used currently. default=False)
 
         Returns
         -------
-
+        list[int]
         """
 
         def get_ulist(ids_list, orig_list_type='session', insert_st_end=False):
@@ -411,6 +665,8 @@ class MHDData():
 
     def get_utter_level_subset(self, uid_list, chunk_size=1, overlap=False):
         """
+        Given a list of utterance IDs, return the corresponding text and the label data.
+        (If the utterance ID has been changed due to chunk sizes and overlaps.)
 
         Parameters
         ----------
@@ -555,6 +811,7 @@ class MHDTrainData(MHDData):
     def load_corpus(self, corpus_file, sep, min_wcnt=1, min_np_len=2, max_np_len=3,
                     token_pattern=r"(?u)\b\w[A-Za-z']*\b",
                     ignore_case=True, remove_numbers=False, sub_numbers=True, parser=None, stemmer_type=None,
+                    proper_nouns_dir="./stopwordlists",
                     corpus_pkl='./corpus.pkl', label_pkl='./labels.pkl', vocab_pkl='./vocab.pkl'):
 
         if self.verbose > 0:
@@ -590,9 +847,15 @@ class MHDTrainData(MHDData):
             raw_df = raw_df[raw_df.topicnumber > 0]
             raw_df = raw_df[raw_df.visitid > 0]
 
+            names_to_sub = preproc.read_words(os.path.join(proper_nouns_dir, "names.txt"), ignore_case)
+            locs_to_sub = preproc.read_words(os.path.join(proper_nouns_dir, "locations.txt"), ignore_case)
+
             if self.verbose > 1:
                 print("  Cleaning the corpus (removing punctuations..)")
             for i in range(raw_df.shape[0]):
+                if self.verbose > 2 and i % 5000 == 0:
+                    print("   %10d utterances" % i)
+
                 row = raw_df.iloc[i]
 
                 sesid = int(row['visitid'])
@@ -603,7 +866,9 @@ class MHDTrainData(MHDData):
 
                 # preprocess the sentence/doc
                 if type(text_) == str:
-                    text = preproc.remove_punc(text_, ignore_case, remove_numbers=remove_numbers, mhddata=True)
+                    text = preproc.remove_punc(text_, ignore_case, remove_numbers=remove_numbers,
+                                               names_list=names_to_sub, locations_list=locs_to_sub,
+                                               is_mhddata=True)
 
                     if len(text.split()) >= min_wcnt:  # or maybe do len(text) < min_charcnt?
 
@@ -639,7 +904,7 @@ class MHDTrainData(MHDData):
                                             self.max_dfreq,
                                             min_np_len, max_np_len,
                                             ignore_case,
-                                            parser, stemmer_type)
+                                            parser, stemmer_type, self.verbose)
 
             cleaned_df = raw_df.iloc[rows_to_keep]
             cleaned_df = cleaned_df.assign(visitid=sesid_arr, text_cleaned=corpus_txt,
@@ -691,7 +956,7 @@ class MHDTrainData(MHDData):
         self.segid2lab, self.segid2lid, self.segid2lidarr, self.segid2ltid = cleaned[2]
         self.uid2lab, self.uid2lid = cleaned[3]
         self.label_mappings = cleaned[-1]
-        self.lid2shortname = [self.lab2shortname[self.lid2lab[i]] for i in range(len(self.lid2lab))]
+        self.lid2name = [self.lab2name[self.lid2lab[i]] for i in range(len(self.lid2lab))]
 
 
     def _clean_labels_inner(self, lid2lab, lab2lid, sid2labs, segid2lab, segid2lt, uid2lab,
@@ -720,8 +985,8 @@ class MHDTrainData(MHDData):
 
         def print_label_mappings(lab_map, labcnts):
             for lab in sorted(lab_map.keys()):
-                print("  %s %s --> %s %s" % (lab, self.lab2shortname.get(lab, "nan"),
-                                             lab_map[lab], self.lab2shortname.get(lab_map[lab], "nan")))
+                print("  %s %s --> %s %s" % (lab, self.lab2name.get(lab, "nan"),
+                                             lab_map[lab], self.lab2name.get(lab_map[lab], "nan")))
         # Can include more steps other than deleting less frequent labels
 
         # 1. Label mappings for merging labels (it does not create new labels)
@@ -744,8 +1009,7 @@ class MHDTrainData(MHDData):
                     labarr[lid] = 1
             labmat[i] = labarr
 
-
-        # avoid deleting 'other' code
+        # Avoid deleting 'other' code
         code_other = '37'
         labmat[:, self.lab2lid_all[code_other]] += min_sess_freq
 
@@ -772,7 +1036,6 @@ class MHDTrainData(MHDData):
 
         return (lid2lab_new, lab2lid_new), sid_labs, segid_labs, uid_labs, label_mappings
 
-
     def _save_cleaned_lab_pkl(self, lid2lab, lab2lid, lab_mappings,
                               cleaned_label_pkl='./label_cleaned.pkl'):
         lab_data_to_save = (lid2lab, lab2lid, lab_mappings)
@@ -789,6 +1052,7 @@ class MHDTestData(MHDData):
                  token_pattern=r"(?u)[A-Za-z\?\!\-\.']+", verbose=1,
                  corpus_pkl='./corpus_test.pkl', tr_label_pkl="./label.pkl", tr_vocab_pkl="./vocab.pkl"):
 
+        self.verbose = verbose
         cl_lab_pkl = tr_label_pkl.split(".pkl")[0] + "_cleaned.pkl"
         if self.load_train_lab_pkl(tr_label_pkl, cl_lab_pkl) and self.load_train_vocab_pkl(tr_vocab_pkl):
 
@@ -809,9 +1073,6 @@ class MHDTestData(MHDData):
             # self.get_valid_data()
             self.clean_labels(min_sfreq, self.label_mappings)
 
-            self.bow = None
-            self.vectorizer = None
-
 
     def print_stats(self):
         print("Number of sessions: %d (ones that have text)" % len(self.sstt2uid))
@@ -825,8 +1086,12 @@ class MHDTestData(MHDData):
     def load_corpus(self, corpus_file, sep, min_wcnt=1, min_np_len=2, max_np_len=3,
                     token_pattern=r"(?u)\b\w[A-Za-z']*\b",
                     ignore_case=True, remove_numbers=False, sub_numbers=True, parser=None, stemmer_type=None,
+                    proper_nouns_dir="./stopwordlists",
                     corpus_pkl='./corpus.pkl', label_pkl='./labels.pkl', vocab_pkl='./vocab.pkl'):
+        """
+        Loading corpus method for Test data
 
+        """
         if self.verbose > 0:
             print('Loading and preprocessing the corpus with labels')
         if not self._load_corpus_pkl(corpus_pkl):
@@ -860,6 +1125,9 @@ class MHDTestData(MHDData):
                 raw_df = raw_df[raw_df.topicnumber > 0]
             raw_df = raw_df[raw_df.visitid > 0]
 
+            names_to_sub = preproc.read_words(os.path.join(proper_nouns_dir, "names.txt"), ignore_case)
+            locs_to_sub = preproc.read_words(os.path.join(proper_nouns_dir, "locations.txt"), ignore_case)
+
             if self.verbose > 1:
                 print("  Cleaning the corpus (removing punctuations..)")
             for i in range(raw_df.shape[0]):
@@ -877,7 +1145,8 @@ class MHDTestData(MHDData):
 
                 # preprocess the sentence/doc
                 if type(text_) == str:
-                    text = preproc.remove_punc(text_, ignore_case, remove_numbers=remove_numbers, mhddata=True)
+                    text = preproc.remove_punc(text_, ignore_case, remove_numbers=remove_numbers,
+                                               names_list=names_to_sub, locations_list=locs_to_sub, is_mhddata=True)
 
                     if len(text.split()) >= min_wcnt:  # or maybe do len(text) < min_charcnt?
 
@@ -968,7 +1237,7 @@ class MHDTestData(MHDData):
             self.segid2lab, self.segid2lid, self.segid2lidarr, self.segid2ltid = cleaned[1]
             self.uid2lab, self.uid2lid = cleaned[2]
 
-        self.lid2shortname = [self.lab2shortname[self.lid2lab[i]] for i in range(len(self.lid2lab))]
+        self.lid2name = [self.lab2name[self.lid2lab[i]] for i in range(len(self.lid2lab))]
 
     def _clean_labels_inner(self, sid2labs, segid2lab, segid2lt, uid2lab,
                             label_mappings=None):
@@ -980,8 +1249,8 @@ class MHDTestData(MHDData):
 
         def print_label_mappings(lab_map):
             for lab in sorted(lab_map.keys()):
-                print("  %s %s --> %s %s" % (lab, self.lab2shortname.get(lab, "nan"),
-                                             lab_map[lab], self.lab2shortname.get(lab_map[lab], "nan")))
+                print("  %s %s --> %s %s" % (lab, self.lab2name.get(lab, "nan"),
+                                             lab_map[lab], self.lab2name.get(lab_map[lab], "nan")))
 
         if self.verbose > 1:
             print_label_mappings(label_mappings)
