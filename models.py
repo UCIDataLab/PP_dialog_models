@@ -147,6 +147,7 @@ class LogRegDialogModel(DialogModel):
 
     def grid_search_parameter(self, data_file, C_values=None,
                               penalty_type="l2", solver='lbfgs',
+                              C_range=np.arange(0.6, 3, 0.1),
                               n_fold=3, verbose=1):
         """
         A method that does grid search over the training data and finds the best
@@ -160,7 +161,7 @@ class LogRegDialogModel(DialogModel):
             File path to the training data.
         C_values : iterable or None
             Values to be searched to find the best C value.
-            If None (default), C value is searched over the values np.arange(0.5,0.95,0.05)
+            If None (default), C value is searched over the values np.arange(0.6,3,0.1)
         penalty_type : str
             Penalty type of logistic regression. "l2" is default.
         solver : str
@@ -190,13 +191,13 @@ class LogRegDialogModel(DialogModel):
 
         # Just do 3-fold cross-validation
         grid = GridSearchCV(LogisticRegression(penalty=penalty_type, solver=solver, multi_class=self.lr_type),
-                            {'C': np.arange(0.5, 0.95, 0.05)}, cv=n_fold, verbose=verbose)
+                            {'C': C_range}, cv=n_fold, verbose=verbose)
         grid.fit(trainX, trainy)
         self.grid_search = grid
         print("Best regularization constant: %.2f" % grid.best_params_)
         return grid.best_params_
 
-    def fit_model(self, data_file, penalty_type="l2", reg_const=0.9,
+    def fit_model(self, data_file, penalty_type="l2", reg_const=1.0,
                     solver='lbfgs', model_file='./lrdialog.pkl', verbose=1):
         """
         Loads training data from `data_file`, processes the data,
@@ -213,7 +214,7 @@ class LogRegDialogModel(DialogModel):
             Regularization constant. Inverse of regularization strength.
             Smaller values specify larger regularization.
             (You can plug in the number after running the method 'grid_search_parameter')
-            Default is set to 0.9.
+            Default is set to 1.0.
         solver : str
             "lbfgs" is set to default.
         model_file : str

@@ -83,8 +83,8 @@ class MHDData():
         Dictionary that maps [sessionID, talkturnID] to the utterance IDs
     uid2segid : dict[int, int]
         Maps to utterance ID to segment ID
-    segid2uids : dict[int, list[int]]
-        Dictionary that maps segment ID to the list of utterance IDs who belongs to the segment.
+    segid2uids : list[int]
+        List that maps segment ID to the list of utterance IDs who belongs to the segment.
 
     corpus_df : pd.DataFrame
         Pandas dataframe that has all the data. (except for the cleaned version of labels)
@@ -96,11 +96,11 @@ class MHDData():
         Mapping between the segment id to the label (topic code), before label cleaning
     segid2lab : dict[int, str]
         Same as above, after label cleaning.
-    uid2lab_all : dict[int, str]
+    uid2lab_all : list[str]
         Mapping between the utterance id to the label (topic code), before label cleaning
-    uid2lab : dict[int, str]
+    uid2lab : list[str]
         same as above, after label cleaning
-    uid2lid : dict[int, int]
+    uid2lid : list[int]
         Mapping between the utterance ID to the label ID
 
 
@@ -110,6 +110,8 @@ class MHDData():
         A List that maps from speaker ID/index to speaker
     spkr2spkrid : dict[str,int]
         Reverse map of .spkrid2spkr
+    valid_sids, valid_segids, valid_uids : list[int]
+        List of session, segment, and utterance IDs that are valid (have labels)
 
     """
 
@@ -242,24 +244,23 @@ class MHDData():
                     proper_nouns_dir="./stopwordlists",
                     corpus_pkl='./corpus.pkl', label_pkl='./labels.pkl', vocab_pkl='./vocab.pkl'):
         """
-        Train and test data will have slightly different function.
+        Train and test will have slightly different process.
         """
         pass
 
     def _save_lab_pkl(self, lid2lab_all, segid2lt, label_pkl):
         """
         Saves label related data to a pickle file. (before cleaning)
+        Also creates ltid2lt, lt2ltid, lab2lid_all, lid2lab_all
 
         Parameters
         ----------
         lid2lab_all : list
-            Label
-        segid2lt
-        label_pkl
-
-        Returns
-        -------
-
+            Label id to label mapping before cleaning
+        segid2lt : list
+            Segment id to the topic letters
+        label_pkl : str
+            File path to the pickle file which the label data will be saved to
         """
         lid2lab_all = sorted(list(lid2lab_all))
         lab2lid_all = {ll: i for i, ll in enumerate(lid2lab_all)}
@@ -275,7 +276,21 @@ class MHDData():
             cp.dump(lab_data_to_save, f, protocol=cp.HIGHEST_PROTOCOL)
 
     def _save_vocab_pkl(self, nps, vocab, stw_all, vocab_pkl):
+        """
+        Saves vocab related data to a pickle file.
+        also assigns self.vocabulary and self.stopwords_all
 
+        Parameters
+        ----------
+        nps : set
+            Set of noun phrases
+        vocab : set
+            set of vocabularies
+        stw_all : set
+            Set of all the stopwords (including user-defined vocabs + vocabs by doc freq cutoffs)
+        vocab_pkl : str
+            File path to the pickle file which the vocab data will be saved to
+        """
         if self.nouns_only:
             nps_dict = {}
             for i, nounp in enumerate(nps):
@@ -292,6 +307,30 @@ class MHDData():
     def _save_corpus_pkl(self, corpus_df, nps, np2cnt, uid2sstt, sstt2uid,
                          uid2segid, segid2uids, sid2labs_all, segid2lab_all,
                          segid2lt, uid2lab_all, corpus_pkl):
+        """
+        Saves corpus related data to a pickle file.
+        Also assigns bunch of variables as member variables.
+
+        For parameter information, please refer to the top of this code,
+        description of MHDData class.
+
+        Parameters
+        ----------
+        corpus_df : pd.DataFrame
+        nps : set[str]
+        np2cnt : dict[str, int]
+        uid2sstt : list[int, dict[int, int]]
+        sstt2uid : dict[dict[int, int], int]
+        uid2segid : list[int]
+        segid2uids : dict[int]
+        sid2labs_all : dict[int, str]
+        segid2lab_all : dict[str] or defaultdict(str)
+        segid2lt : dict[str] or defaultdict(str)
+        uid2lab_all : list[str]
+        corpus_pkl : str
+            File path to the pickle file which the corpus related data will be saved to
+
+        """
         self.nps = nps
         self.np2cnt = np2cnt
         self.uid2sstt = uid2sstt
@@ -348,7 +387,6 @@ class MHDData():
             return True
         else:
             return False
-
 
     def _load_lab_pkl(self, label_pkl):
         if os.path.exists(label_pkl):
@@ -744,6 +782,8 @@ class MHDTrainData(MHDData):
                          corpus_pkl=corpus_pkl, label_pkl=label_pkl, vocab_pkl=vocab_pkl)
 
         cl_lab_pkl = label_pkl.split(".pkl")[0] + "_cleaned.pkl"
+
+        # Cleans and save cleaned data so that the TestData can load and use
         self.clean_labels(min_sess_freq=min_sfreq, label_mappings=label_mappings)
         self._save_cleaned_lab_pkl(self.lid2lab, self.lab2lid, self.label_mappings, cl_lab_pkl)
         self.get_valid_data()
@@ -754,7 +794,6 @@ class MHDTrainData(MHDData):
 
         self.bow = None
         self.vectorizer = None
-
 
     def print_stats(self):
         print("Number of sessions: %d (ones that have text)" % len(self.sstt2uid))
@@ -768,8 +807,10 @@ class MHDTrainData(MHDData):
         print("Number of user-defined stopwords: %d" % len(self.stopwords))
         print("Number of stopwords used in total: %d (including the words with low dfs and high dfs)" % len(self.stopwords_all))
 
-
     def get_valid_data(self):
+        """
+        Get valid session, segment, utterance IDs that has labels
+        """
         # Get session IDs and utterance IDs that both have the text and the labels
         if self.verbose > 0:
             print("Getting lists of valid session/utterance IDs that have both text and labels")
@@ -807,12 +848,37 @@ class MHDTrainData(MHDData):
         self.valid_segids = sorted(valid_segids)
         self.valid_uids = sorted(valid_uids)
 
-
     def load_corpus(self, corpus_file, sep, min_wcnt=1, min_np_len=2, max_np_len=3,
                     token_pattern=r"(?u)\b\w[A-Za-z']*\b",
                     ignore_case=True, remove_numbers=False, sub_numbers=True, parser=None, stemmer_type=None,
                     proper_nouns_dir="./stopwordlists",
                     corpus_pkl='./corpus.pkl', label_pkl='./labels.pkl', vocab_pkl='./vocab.pkl'):
+        """
+        Read corpus from 'corpus_file',
+        cleans the text, (cleaning is mostly done in preprocess.py)
+        finds segments and assigns segment IDs,
+        saves all the data.
+
+        For parameters, see the parameter descriptions of the MHDData and MHDTrainData class.
+
+        Parameters
+        ----------
+        corpus_file
+        sep
+        min_wcnt
+        min_np_len
+        max_np_len
+        token_pattern
+        ignore_case
+        remove_numbers
+        sub_numbers
+        parser
+        stemmer_type
+        proper_nouns_dir
+        corpus_pkl
+        label_pkl
+        vocab_pkl
+        """
 
         if self.verbose > 0:
             print('Loading and preprocessing the corpus with labels')
@@ -847,17 +913,17 @@ class MHDTrainData(MHDData):
             raw_df = raw_df[raw_df.topicnumber > 0]
             raw_df = raw_df[raw_df.visitid > 0]
 
+            # Load the list of proper nouns
             names_to_sub = preproc.read_words(os.path.join(proper_nouns_dir, "names.txt"), ignore_case)
             locs_to_sub = preproc.read_words(os.path.join(proper_nouns_dir, "locations.txt"), ignore_case)
 
             if self.verbose > 1:
                 print("  Cleaning the corpus (removing punctuations..)")
+
             for i in range(raw_df.shape[0]):
                 if self.verbose > 2 and i % 5000 == 0:
                     print("   %10d utterances" % i)
-
                 row = raw_df.iloc[i]
-
                 sesid = int(row['visitid'])
                 tt = int(row['talkturn'])
                 text_ = row['text']
@@ -871,7 +937,6 @@ class MHDTrainData(MHDData):
                                                is_mhddata=True)
 
                     if len(text.split()) >= min_wcnt:  # or maybe do len(text) < min_charcnt?
-
                         sesid_arr.append(sesid)
                         rows_to_keep.append(i)
 
@@ -926,9 +991,12 @@ class MHDTrainData(MHDData):
         for voc, i in self.vocabulary.iteritems():
             self.vocabulary_inv[i] = voc
 
-
     def clean_labels(self, min_sess_freq=20, label_mappings=None):
         """
+        Clean labels. If there is a 'label_mapping' given, it does the label merging/updates
+        using the 'label_mapping'.
+        If not, rare labels that appears less than 'miss_sess_freq' sessions
+        will be merged to 'Others' label.
 
         Parameters
         ----------
@@ -936,12 +1004,7 @@ class MHDTrainData(MHDData):
             Ignore labels that appear less than min_sess_freq times
         label_mappings : dict or None
             Label mappings can be given manually.
-
-        Returns
-        -------
-
         """
-
         if self.verbose > 0:
             print("Cleaning labels ..")
         self.n_labels = len(self.lid2lab_all)
@@ -962,8 +1025,6 @@ class MHDTrainData(MHDData):
     def _clean_labels_inner(self, lid2lab, lab2lid, sid2labs, segid2lab, segid2lt, uid2lab,
                             min_sess_freq=10, label_mappings=None):
         """
-        This function is based on Garren Gaut's work (matlab file 'loadlabels.m')
-
         Parameters
         ----------
         lid2lab : list
@@ -982,7 +1043,6 @@ class MHDTrainData(MHDData):
         sid2labels_new
 
         """
-
         def print_label_mappings(lab_map, labcnts):
             for lab in sorted(lab_map.keys()):
                 print("  %s %s --> %s %s" % (lab, self.lab2name.get(lab, "nan"),
@@ -1044,7 +1104,11 @@ class MHDTrainData(MHDData):
 
 
 class MHDTestData(MHDData):
+    """
+    Additional parameters in this class
 
+
+    """
     def __init__(self, data_file, nouns_only=False, ignore_case=True,
                  remove_numbers=False, sub_numbers=True, stopwords_dir="./stopwordlists",
                  label_mappings=None, ngram_range=(1,1), max_np_len=2, min_wlen=1,
@@ -1069,10 +1133,7 @@ class MHDTestData(MHDData):
             self.n_utters = len(self.uid2sstt)
             self.n_vocab = len(self.vocabulary)
             self.n_labels = len(self.lid2lab)
-
-            # self.get_valid_data()
             self.clean_labels(min_sfreq, self.label_mappings)
-
 
     def print_stats(self):
         print("Number of sessions: %d (ones that have text)" % len(self.sstt2uid))
@@ -1089,7 +1150,31 @@ class MHDTestData(MHDData):
                     proper_nouns_dir="./stopwordlists",
                     corpus_pkl='./corpus.pkl', label_pkl='./labels.pkl', vocab_pkl='./vocab.pkl'):
         """
-        Loading corpus method for Test data
+        Read corpus from 'corpus_file', which is the test file.
+        cleans the text, (cleaning is mostly done in preprocess.py)
+        finds segments and assigns segment IDs,
+        saves all the data.
+
+        Parameters
+        ----------
+        corpus_file
+        sep
+        min_wcnt
+        min_np_len
+        max_np_len
+        token_pattern
+        ignore_case
+        remove_numbers
+        sub_numbers
+        parser
+        stemmer_type
+        proper_nouns_dir
+        corpus_pkl
+        label_pkl
+        vocab_pkl
+
+        Returns
+        -------
 
         """
         if self.verbose > 0:
@@ -1110,7 +1195,6 @@ class MHDTestData(MHDData):
 
             # Does not count on the segments
             sid2labs_all = defaultdict(list)
-            # lid2lab_all = set()
 
             # Does count on the segments
             segid2lab = {}  # segment id to string label
@@ -1188,8 +1272,10 @@ class MHDTestData(MHDData):
         if 'topicnumber' in self.corpus_df.columns:
             self.has_label = True
 
-
     def load_train_vocab_pkl(self, tr_vocab_pkl):
+        """
+        Loads vocab data from the pickle file.
+        """
         if self._load_vocab_pkl(tr_vocab_pkl):
             # Get the reverse vocab mapping
             voc_len = max(self.vocabulary.values()) + 1
@@ -1201,6 +1287,10 @@ class MHDTestData(MHDData):
             return False
 
     def _load_cleaned_lab_pkl(self, cleaned_lab_pkl):
+        """
+        Loads the cleaned (merged) label data from the pickle file.
+        (The ones without '_all')
+        """
         if os.path.exists(cleaned_lab_pkl):
             if self.verbose > 0:
                 print("Loading cleaned labels file from " + cleaned_lab_pkl)
@@ -1216,6 +1306,10 @@ class MHDTestData(MHDData):
             return False
 
     def load_train_lab_pkl(self, tr_label_pkl, cl_tr_label_pkl):
+        """
+        Loads all the label data from the training step.
+        (Both the cleaned version and the version before cleaning.)
+        """
         self.lid2lab = []
         return self._load_lab_pkl(tr_label_pkl) and self._load_cleaned_lab_pkl(cl_tr_label_pkl)
 
