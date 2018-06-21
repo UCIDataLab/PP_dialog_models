@@ -144,10 +144,10 @@ class LogRegDialogModel(DialogModel):
     def __init__(self, lr_type="ovr"):
         DialogModel.__init__(self)
         self.lr_type = lr_type
+        self.trainX, self.trainy = None, None
 
     def grid_search_parameter(self, data_file, C_values=None,
                               penalty_type="l2", solver='lbfgs',
-                              C_range=np.arange(0.6, 3, 0.1),
                               n_fold=3, verbose=1):
         """
         A method that does grid search over the training data and finds the best
@@ -191,10 +191,10 @@ class LogRegDialogModel(DialogModel):
 
         # Just do 3-fold cross-validation
         grid = GridSearchCV(LogisticRegression(penalty=penalty_type, solver=solver, multi_class=self.lr_type),
-                            {'C': C_range}, cv=n_fold, verbose=verbose)
+                            {'C': C_values}, cv=n_fold, verbose=verbose)
         grid.fit(trainX, trainy)
         self.grid_search = grid
-        print("Best regularization constant: %.2f" % grid.best_params_)
+        print("Best regularization constant: %.2f" % grid.best_params_['C'])
         return grid.best_params_
 
     def fit_model(self, data_file, penalty_type="l2", reg_const=1.0,
