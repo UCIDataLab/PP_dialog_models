@@ -43,13 +43,22 @@ def get_binary_classification_scores(true_y, pred_y, n_labels):
     fscores = []
 
     for tidx in range(n_labels):
-        precisions.append(precision_score(true_y_arr[:, tidx], yhat_arr[:, tidx]))
-        recalls.append(recall_score(true_y_arr[:, tidx], yhat_arr[:, tidx]))
-        fscores.append(f1_score(true_y_arr[:, tidx], yhat_arr[:, tidx]))
-        aucs.append(roc_auc_score(true_y_arr[:, tidx], yhat_arr[:, tidx]))
-        rprecisions.append(R_precision(true_y_arr[:, tidx], yhat_arr[:, tidx]))
+        if sum(true_y_arr[:, tidx]) == 0:
+            print("WARNING: label index %d has 0 instance in the data. Binary scores for this label is set to 0.0" % tidx)
+            precisions.append(0.0)
+            recalls.append(0.0)
+            fscores.append(0.0)
+            aucs.append(0.0)
+            rprecisions.append(0.0)
+        else:
+            precisions.append(precision_score(true_y_arr[:, tidx], yhat_arr[:, tidx]))
+            recalls.append(recall_score(true_y_arr[:, tidx], yhat_arr[:, tidx]))
+            fscores.append(f1_score(true_y_arr[:, tidx], yhat_arr[:, tidx]))
+            aucs.append(roc_auc_score(true_y_arr[:, tidx], yhat_arr[:, tidx]))
+            rprecisions.append(R_precision(true_y_arr[:, tidx], yhat_arr[:, tidx]))
 
-    return {"precision":precisions, "recall":recalls, "auc":aucs, "rprecision":rprecisions, "f1score":fscores}
+    return {"precision":np.array(precisions), "recall":np.array(recalls),
+            "auc":np.array(aucs), "rprecision":np.array(rprecisions), "f1score":np.array(fscores)}
 
 
 def get_overall_scores_in_diff_metrics(true_y, pred_y, tr_doc_label_mat):

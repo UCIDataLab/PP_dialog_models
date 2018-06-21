@@ -7,7 +7,7 @@ import os
 
 from mhddata import MHDTrainData, MHDTestData
 from evaluate import get_binary_classification_scores, get_accuracy, get_weighted_avg
-from utils import get_marginals_from_y_seq, flatten_nested_labels
+from utils import get_marginals_from_y_seq, flatten_nested_labels, get_lab_arr
 from hmm import convert_class_prob_to_log_emission_prob, viterbi, viterbi_with_multiple_transitions,\
     get_transition_mat, get_spkr_transition_mat, get_start_end_prob
 
@@ -353,7 +353,6 @@ class HMMDialogModel(DialogModel):
         self.log_transitions = get_transition_mat(labs_tr, self.n_labels,
                                                   proportional_prior=True, prior_sum=0.5, log=True)
 
-
         self.start_prob, self.end_prob = get_start_end_prob(labs_tr, self.n_labels)
         self.log_start_prob = np.log(self.start_prob)
         self.log_end_prob = np.log(self.end_prob)
@@ -371,6 +370,8 @@ class HMMDialogModel(DialogModel):
         print("Loading model from "+ model_file)
         with open(model_file, 'rb') as f:
             self.log_transitions, self.start_prob, self.end_prob, self.marginals = cp.load(f)
+            self.log_start_prob = np.log(self.start_prob)
+            self.log_end_prob = np.log(self.end_prob)
 
     def predict_viterbi(self, te_data_file):# spkr_transitions=False):
         """
@@ -408,6 +409,41 @@ class HMMDialogModel(DialogModel):
 class DialogResult():
     """
     Class that stores all the results and calculates different scores.
+
+    * S : number of sessions
+    * N_s: number of utterances in the session. different number for each session.
+    * T : number of labels
+
+    Variables
+    ---------
+    n_labels : int
+        Number of labels
+    predictions : list[list[int]]
+        Nested list of size (S, N_s, 1). List of sessions, where session is a list of
+        predictions of utterances in that session
+    predictions_f : list[int]
+        Flattened version of predictions. Length = S x N_s
+    output_prob : list[np.array]
+        List of output probabilities for each session.
+        Length S list of np.array with size (N_s, T)
+        Total size = (S, N_s, T)
+    output_score : list[list[float]]
+        Nested list of output scores of size (S, N_s, 1).
+        Only used for HMM.
+    marginals : np.array
+        np.array, size (T,)
+        Marginal probabilities calculated from the training data.
+    model_info : str
+        String that describes the model
+    scores : dict[str, float]
+        Dictionary that stores accuracy, and all the averaged and weighted averaged binary scores.
+        '_w' means weighted. Weights are the marginal probabilities from training data.
+        Keys are: 'accuracy', 'auc', 'auc_w', 'f1score', 'f1score_w', 'precision', 'precision_w',
+                   'recall', 'recall_w', 'rprecision', 'rprecision_w'
+    bin_scores : dict[str, list[float]]
+        Dictionary that has different binary score lists.
+        Keys are 'precision', 'recall', 'auc', 'rprecision', 'f1score'
+        Value is a list of scores for each label. length=T.
     """
 
     def __init__(self, n_labels, predictions, output_prob=None, marginals=None,
@@ -422,6 +458,7 @@ class DialogResult():
         self.marginals = marginals
         self.model_info = model_info
         self.scores = None
+        self.bin_scores = None
 
     def get_scores(self, true_y):
         """
@@ -442,17 +479,20 @@ class DialogResult():
         acc = get_accuracy(true_y, self.predictions_f)
         scores["accuracy"] = acc
 
+        # Only take averages using non-zero instance labels.
+        nonzero_labs = np.where(np.sum(get_lab_arr(true_y, self.n_labels), axis=0))[0]
         bin_scores = get_binary_classification_scores(true_y, self.predictions_f, self.n_labels)
         for sc in sorted(bin_scores.keys()):
             if self.marginals is None:
                 weighted = 0.0
             else:
-                weighted = get_weighted_avg(bin_scores[sc], self.marginals)
-            notweighted = np.mean(bin_scores[sc])
+                weighted = get_weighted_avg(bin_scores[sc][nonzero_labs], self.marginals[nonzero_labs])
+            notweighted = np.mean(bin_scores[sc][nonzero_labs])
             scores[sc + "_w"] = weighted
             scores[sc] = notweighted
 
         self.scores = scores
+        self.bin_scores = bin_scores
         return self.scores
 
     def print_scores(self, true_y=None, filename='./result_in_diff_metrics.csv'):
