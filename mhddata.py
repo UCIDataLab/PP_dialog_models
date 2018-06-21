@@ -550,20 +550,30 @@ class MHDData():
     def fit_bow(self, train_doc, tfidf=True, vocabulary=None, stop_words=None,
                 token_pattern=r"(?u)[A-Za-z\?\!\-\.']+", max_wlen=0):
         """
-        Fit bag of words or TF-IDF
+        Fits bag of words or TF-IDF.
 
         Parameters
         ----------
-        train_doc
-        tfidf
-        vocabulary
-        stop_words
-        token_pattern
-        max_wlen
+        train_doc : list[str]
+            Training document
+        tfidf : bool
+            Flag for TF-idf
+        vocabulary : set[str] or None
+            Set of vocabulary
+            If None, uses self.vocabulary
+        stop_words : set[str] or None
+            Set of stop words
+            If None, uses self.stopwords_all
+        token_pattern : str
+            Regular expression denoting what constitutes a token
+        max_wlen : int
+            Maximum word length to be considered.
+            Upper bound of the n-gram range.
 
         Returns
         -------
-
+        tuple[np.array, Vectorizer]
+            Returns a BOW for training data and the vectorizer.
         """
 
         if max_wlen == 0:
@@ -594,6 +604,21 @@ class MHDData():
 
     @staticmethod
     def transform_bow(test_doc, vectorizer):
+        """
+        Transforms test document into a BOW matrix.
+
+        Parameters
+        ----------
+        test_doc : list[str]
+            List of test documents (utterances).
+        vectorizer : TfidfVectorizer or CountVectorizer
+            Vectorizer that was trained using the training data
+
+        Returns
+        -------
+        np.array
+
+        """
         if test_doc is not None and len(test_doc) > 0:
             return vectorizer.transform(test_doc)
         else:
@@ -602,7 +627,24 @@ class MHDData():
     @staticmethod
     def get_nested_bow(nested_docs, vectorizer):
         """
-        Works when nested_docs is a list[list[string]].
+        Works for a nested docs. Returns a list of BOW.
+
+        Parameters
+        ----------
+        nested_docs : list[list[str]]
+            List of sessions, where each session is a list of utterances in the session
+        vectorizer : TfidfVectorizer or CountVectorizer
+            Vectorizer that was trained using the training data
+
+        Returns
+        -------
+        list[np.array]
+            List of BOW, where each BOW is for each session.
+
+        """
+
+        """
+        Works for a nested docs.when nested_docs is a list[list[string]].
         """
         nested_bows = []
         for doc in nested_docs:
@@ -615,7 +657,7 @@ class MHDData():
 
         Parameters
         ----------
-        sesid_list
+        sesid_list :
 
         Returns
         -------
@@ -1098,6 +1140,9 @@ class MHDTrainData(MHDData):
 
     def _save_cleaned_lab_pkl(self, lid2lab, lab2lid, lab_mappings,
                               cleaned_label_pkl='./label_cleaned.pkl'):
+        """
+        Save cleaned labels (label variables without '_all' postfix) to a pkl file.
+        """
         lab_data_to_save = (lid2lab, lab2lid, lab_mappings)
         with open(cleaned_label_pkl, 'wb') as f:
             cp.dump(lab_data_to_save, f, protocol=cp.HIGHEST_PROTOCOL)
@@ -1107,7 +1152,8 @@ class MHDTestData(MHDData):
     """
     Additional parameters in this class
 
-
+    has_label : bool
+        True if the data has label
     """
     def __init__(self, data_file, nouns_only=False, ignore_case=True,
                  remove_numbers=False, sub_numbers=True, stopwords_dir="./stopwordlists",
@@ -1172,10 +1218,6 @@ class MHDTestData(MHDData):
         corpus_pkl
         label_pkl
         vocab_pkl
-
-        Returns
-        -------
-
         """
         if self.verbose > 0:
             print('Loading and preprocessing the corpus with labels')
