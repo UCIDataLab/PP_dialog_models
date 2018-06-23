@@ -119,7 +119,28 @@ def viterbi_with_multiple_transitions(emission_scores, trans_ids, trans_scores_l
 
 
 def get_trans_prob_from_cnt(trans_cnt_mat, proportional_prior=True, prior_sum=0.5, log=True):
+    """
+    Used inside of the method get_transition_mat.
+    From the counts of the transitions, returns the probability matrix.
 
+    Parameters
+    ----------
+    trans_cnt_mat : np.array
+        with size (n_states, n_states)
+    proportional_prior : bool
+        Use proportional Dirichlet prior instead of flat priors.
+        Priors are proportional to the marginal probabilities.
+    prior_sum : float
+        The total sum of the priors. \sum_k prior_k
+    log : bool
+        Returns log probabilities if set to True (default)
+
+    Returns
+    -------
+    np.array
+        with size (n_states, n_states)
+
+    """
     n_states = trans_cnt_mat.shape[0]
     if proportional_prior:
         alpha = np.sum(trans_cnt_mat, axis=0)
@@ -138,15 +159,24 @@ def get_trans_prob_from_cnt(trans_cnt_mat, proportional_prior=True, prior_sum=0.
 
 def get_transition_mat(true_lab_lists, n_states, proportional_prior=True, prior_sum=0.5, log=True):
     """
+    Returns a transition matrix.
 
     Parameters
     ----------
     true_lab_lists : list[list[int]]
         A list of sessions, where a session is a list of labels,
     n_states : int
+        Number of states that exist in the data
+    proportional_prior : bool
+        Use proportional Dirichlet prior instead of flat priors.
+        Priors are proportional to the marginal probabilities.
+    prior_sum : float
+        The total sum of the priors. \sum_k prior_k
 
     Returns
     -------
+    np.array
+        np.array with size (n_states, n_states)
 
     """
     trans_cnts = np.zeros((n_states, n_states))
@@ -160,6 +190,35 @@ def get_transition_mat(true_lab_lists, n_states, proportional_prior=True, prior_
 
 def get_spkr_transition_mat(true_lab_lists, spkr_lists, n_states, get_patient_mat=False,
                             proportional_prior=True, prior_sum=0.5, log=True):
+    """
+    Get a dictionary of transition matrices and transition count matrices, where the keys are
+    'MD_trans_mat', 'MD_cnts', 'OTH_trans_mat', 'OTH_cnts'.
+    Keys 'PT_trans_mat' and 'PT_cnts' only exist when the parameter get_patient_mat is set to True.
+
+    Parameters
+    ----------
+    true_lab_lists : list[list[int]]
+        Nested list of labels.
+        A list of sessions, where a session is a list of labels.
+    spkr_lists : list[list[int]]
+        A list of sessions, where a session is a list of speaker IDs of the utterances in that session.
+    n_states : int
+        Number of states (number of different labels)
+    get_patient_mat : bool
+        Also get the patient matrix in addition to MD and OTH matrix.
+    proportional_prior : bool
+        Use proportional Dirichlet prior instead of flat priors.
+        Priors are proportional to the marginal probabilities.
+    prior_sum : float
+        The total sum of the priors. \sum_k prior_k
+    log : bool
+        Returns log probabilities if set to True (default)
+
+    Returns
+    -------
+    dict[int, np.array]
+
+    """
     # 1. * -> MD (idx: 0)
     # 2. * -> not MD (others, PT + OTHER)
     # 3. * -> PT (idx: 1)
@@ -191,16 +250,21 @@ def get_spkr_transition_mat(true_lab_lists, spkr_lists, n_states, get_patient_ma
 
 def get_start_end_prob(true_lab_lists, n_states, alpha=0.001):
     """
-
     Parameters
     ----------
     true_lab_lists : list[list[int]]
+        Nested list of labels.
+        A list of sessions, where a session is a list of labels.
     n_states : int
+        Number of states or labels
     alpha : float
+        Small number for padding (Dirichlet prior)
 
     Returns
     -------
-
+    tuple(np.array, np.array)
+        Each element in a tuple has size (n_states,1).
+        Returns the start and the end probabilities.
     """
     initial_prob = np.zeros(n_states) + alpha
     end_prob = np.zeros(n_states) + alpha
@@ -216,21 +280,30 @@ def get_start_end_prob(true_lab_lists, n_states, alpha=0.001):
 
 def convert_class_prob_to_log_emission_prob(class_prob, marginals, p_utter=1e-5):
     """
+    Applies Bayes rule to convert the class output probabilities
+    given an utterance p(t|u) to the emission probabilities p(u|t).
+    p(u|t) = p(t|u) * p(u) / p(t).
+    We assume that p(u) is the same for all the utterances, and p(t) is the
+    marginal probability for topic t.
 
     Parameters
     ----------
-    class_prob
+    class_prob : np.array
+        np.array of size (N_s, T), where N_s: number of utterances in the session
+        and T: number of labels or states.
+    marginals : np.array
+        np.array of size (T, 1).  (T: number of labels or states.)
 
     Returns
     -------
-
+    np.array
+        Size should be the same as class_prob.
+        Returns the log emission probabilities.
     """
     N = class_prob.shape[0]
-    ## not sure if putting P(u) the same is right.
     if p_utter > 0:
         log_putter = np.log(p_utter)  # we can ignore this but ..
     else:
         log_putter = 0.0
-    # p(tk=1|u) / p(tk=1), need to multiply p(u) to get the prob.
     log_p_u_tk = np.log(class_prob) + log_putter - np.log(np.tile(marginals, (N,1)))
     return log_p_u_tk
