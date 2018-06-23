@@ -62,6 +62,8 @@ class MHDData():
         A list of Topic letters. Where indices are the IDs of those topic letters
     lt2ltid : dict[str, int]
         Reverse mapping of ltid2lt
+    label_mappings: dict[str, str]
+        Label mappings
 
 
     Corpus related variables
@@ -205,7 +207,6 @@ class MHDData():
                          corpus_pkl=corpus_pkl, label_pkl=label_pkl, vocab_pkl=vocab_pkl)
 
         self.assign_labnames()
-
         self.assign_spkr_codes()
 
     def assign_labnames(self):
@@ -1160,13 +1161,19 @@ class MHDTestData(MHDData):
                  label_mappings=None, ngram_range=(1,1), max_np_len=2, min_wlen=1,
                  min_dfreq=0.0, max_dfreq=0.9, min_sfreq=10,
                  token_pattern=r"(?u)[A-Za-z\?\!\-\.']+", verbose=1,
-                 corpus_pkl='./corpus_test.pkl', tr_label_pkl="./label.pkl", tr_vocab_pkl="./vocab.pkl"):
+                 corpus_pkl='./corpus_test.pkl', tr_label_pkl="./label.pkl", tr_vocab_pkl="./vocab.pkl",
+                 reload_corpus=True):
 
         self.verbose = verbose
         cl_lab_pkl = tr_label_pkl.split(".pkl")[0] + "_cleaned.pkl"
         if self.load_train_lab_pkl(tr_label_pkl, cl_lab_pkl) and self.load_train_vocab_pkl(tr_vocab_pkl):
 
             self.has_label = False
+            if reload_corpus:
+                if os.path.isfile(corpus_pkl):
+                    if self.verbose > 1:
+                        print("Removing " + corpus_pkl + " to re-load the corpus.")
+                    os.remove(corpus_pkl)
 
             MHDData.__init__(self, data_file, nouns_only=nouns_only, ignore_case=ignore_case,
                              remove_numbers=remove_numbers, sub_numbers=sub_numbers, stopwords_dir=stopwords_dir,
@@ -1372,6 +1379,8 @@ class MHDTestData(MHDData):
             self.sid2labs, self.sid2lidarr = cleaned[0]
             self.segid2lab, self.segid2lid, self.segid2lidarr, self.segid2ltid = cleaned[1]
             self.uid2lab, self.uid2lid = cleaned[2]
+        else:
+            self.uid2lid = []
 
         self.lid2name = [self.lab2name[self.lid2lab[i]] for i in range(len(self.lid2lab))]
 
