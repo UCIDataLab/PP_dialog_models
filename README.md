@@ -1,20 +1,23 @@
 # PP_dialog_models
 Computational methods for evaluating patient-provider communication.
 
-#### load_model_and_predict.ipynb
+### load_model_and_predict.ipynb
 Demo.
   iPython notebook file that loads the pre-trained model and the sample test data
   and predicts on the sample test data set.
   
+### Input training and test file format 
+Training and test file should have at least `visitid`, `talkturn`, 
+`text`, `topicnumber`, `topicletter` as column names. <br>
+In the test data, `topicnumber` and `topicletter` columns are not necessary 
+since the test data can be run without labels. 
+However, the scores will not be calculated without those columns.
   
-#### Sample Test File: mhd_sample_te.txt
-  Sample test file should have columns `visitid`, `talkturn`, 
-  `text`, `topicnumber`, `topicletter`. <br>
-  `topicnumber` and `topicletter` columns are not necessary since the test data can be tested without labels. 
-  However, the scores will not be calculated without those columns.
+- **sample_test_data.txt** <br>
+A sample test data.
   
   
-#### models.py
+### models.py
 Classes for models are in the file.
 - `DialogModel` <br>
 Base class for dialog model. Used when you have a set of results from another 
@@ -28,12 +31,15 @@ Class for running independent logistic regression model. <br>
 Details of the usage can be found in the code docstring.
 
 - `HMMDialogModel` <br>
-Class for running Hidden Markov Model on top of some base independent model.
+Class for running Hidden Markov Model on top of some base independent model. <br>
 `fit_model(tr_data)` to train data, `predict_viterbi(te_data)` to make prediction.<br>
 Details of the usage can be found in the code docstring.
  
+- `DialogResult` <br>
+Class that stores the results and calculates and prints out the scores.
 
-#### mhddata.py
+
+### mhddata.py
 Classes for the data. The classes loads the data and pre-processes. 
 - `DialogData` : Base class for dialog data.
 - `MHDTrainData` : Class for MHD training data. 
@@ -41,12 +47,13 @@ Classes for the data. The classes loads the data and pre-processes.
 Preprocessing methods are in **`preprocess.py`** file.
  
  
-#### hmm.py
+### hmm.py
 Methods that are related to HMM
 
-#### utils.py 
+
+### utils.py 
 Utility methods.
 
 
-#### ***.pkl Files
+### ***.pkl Files
   Pre-trained models, vocabulary, and labels.
