@@ -1,5 +1,9 @@
 # PP_dialog_models
-Computational methods for evaluating patient-provider communication.
+Computational methods for evaluating patient-provider communication. <br>
+Logistic regression and HMM can be used for prediction.
+
+Jihyun Park <jihyunp@uci.edu> <br>
+Last updated: 6/22/2018
 
 ### load_model_and_predict.ipynb
 Demo.
