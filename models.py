@@ -87,7 +87,7 @@ class DialogModel():
 
     def load_results(self, te_data_file, model_info='dialog_model', marginals=None,
                      predictions='./model123_pred.pkl', output_probs='./model123_prob.pkl',
-                     verbose=1):
+                     verbose=1, output_filename='./utter_level_result.txt'):
         """
         This is used when you are not running predictions but just want to load the results
         to calculate scores or to plug the results into HMM.
@@ -116,7 +116,6 @@ class DialogModel():
         n_labs = self.te_data.n_labels
         te_data_nested = self.te_data.get_utter_level_data_from_sids(sorted(self.te_data.sstt2uid.keys()))
         ulists, docs, labs = te_data_nested
-        labs_f = flatten_nested_labels(labs)
 
         if os.path.exists(output_probs):
             with open(output_probs, 'rb') as f:
@@ -132,7 +131,9 @@ class DialogModel():
         self.result = DialogResult(n_labs, pred, prob, marginals, model_info)
 
         if self.te_data.has_label:
-            self.result.get_scores(labs_f)
+            self.result.get_scores(labs)
+            self.result.print_utter_level_results(ulists, docs, labs, self.te_data.lid2name,
+                                                  filename=output_filename)
         return self.result
 
 
@@ -257,7 +258,7 @@ class LogRegDialogModel(DialogModel):
             print("Loading Logistic regression model to "+ model_file)
             self.model, self.vectorizer, self.marginals = cp.load(f)
 
-    def predict(self, te_data_file, verbose=1):
+    def predict(self, te_data_file, verbose=1, output_filename='./utter_level_results.txt'):
         """
         Loads test data from 'te_data_file' and processes the data.
         Run prediction using the trained model.
@@ -282,7 +283,6 @@ class LogRegDialogModel(DialogModel):
 
         te_data_nested = self.te_data.get_utter_level_data_from_sids(sorted(self.te_data.sstt2uid.keys()))
         ulists, docs, labs = te_data_nested
-        labs_f = flatten_nested_labels(labs)
 
         outputprobs = []
         yhats = []
@@ -298,7 +298,12 @@ class LogRegDialogModel(DialogModel):
 
         self.result = DialogResult(n_labs, yhats, outputprobs, self.marginals, self.model_info)
         if self.te_data.has_label:
-            self.result.get_scores(labs_f)
+            self.result.get_scores(labs)
+            self.result.print_utter_level_results(ulists, docs, labs, self.te_data.lid2name,
+                                                  filename=output_filename)
+        else:
+            self.result.print_utter_level_results_without_true_lab(ulists, docs, self.te_data.lid2name,
+                                                                   filename=output_filename)
         return self.result
 
 
@@ -373,7 +378,7 @@ class HMMDialogModel(DialogModel):
             self.log_start_prob = np.log(self.start_prob)
             self.log_end_prob = np.log(self.end_prob)
 
-    def predict_viterbi(self, te_data_file):# spkr_transitions=False):
+    def predict_viterbi(self, te_data_file, output_filename="./utter_level_result.txt"):# spkr_transitions=False):
         """
         Viterbi decoding using output probabilites from the base model,
         marginal probabilities, and transition probabilities.
@@ -387,7 +392,6 @@ class HMMDialogModel(DialogModel):
 
         te_data_nested = self.te_data.get_utter_level_data_from_sids(sorted(self.te_data.sstt2uid.keys()))
         ulists, docs, labs = te_data_nested
-        labs_f = flatten_nested_labels(labs)
 
         vit_res = []
         for sidx in range(len(ulists)):
@@ -402,7 +406,12 @@ class HMMDialogModel(DialogModel):
         self.result = DialogResult(self.n_labels, yhats, None, self.marginals,
                                    self.model_info, output_scores)
         if self.te_data.has_label:
-            self.result.get_scores(labs_f)
+            self.result.get_scores(labs)
+            self.result.print_utter_level_results(ulists, docs, labs, self.te_data.lid2name,
+                                                  filename=output_filename)
+        else:
+            self.result.print_utter_level_results_without_true_lab(ulists, docs, self.te_data.lid2name,
+                                                                   filename=output_filename)
         return self.result
 
 
@@ -466,8 +475,9 @@ class DialogResult():
 
         Parameters
         ----------
-        true_y : np.array or list
-            A flattened list of labels with size (number of total utterances, 1)
+        true_y : list[list[int]]
+            Nested list of size (S, Ns, 1)
+            (A list list of labels in each session.)
 
         Returns
         -------
@@ -476,12 +486,13 @@ class DialogResult():
         print("Calculating scores..")
         scores = {}
 
-        acc = get_accuracy(true_y, self.predictions_f)
+        true_y_f = flatten_nested_labels(true_y)
+        acc = get_accuracy(true_y_f, self.predictions_f)
         scores["accuracy"] = acc
 
         # Only take averages using non-zero instance labels.
-        nonzero_labs = np.where(np.sum(get_lab_arr(true_y, self.n_labels), axis=0))[0]
-        bin_scores = get_binary_classification_scores(true_y, self.predictions_f, self.n_labels)
+        nonzero_labs = np.where(np.sum(get_lab_arr(true_y_f, self.n_labels), axis=0))[0]
+        bin_scores = get_binary_classification_scores(true_y_f, self.predictions_f, self.n_labels)
         for sc in sorted(bin_scores.keys()):
             if self.marginals is None:
                 weighted = 0.0
@@ -502,8 +513,9 @@ class DialogResult():
 
         Parameters
         ----------
-        true_y : list or np.array or None
-            A flattened list of labels with size (number of total utterances, 1)
+        true_y : list[list[int]]
+            Nested list of size (S, N_s, 1)
+            (A list list of labels in each session.)
             If .scores have already been calculated, it can be None (Default).
         filename : str
             File path to the output.
@@ -535,3 +547,81 @@ class DialogResult():
                 print(",%.4f" % result_numbers[met]),
             f.write("\n")
 
+    def print_utter_level_results(self, uids, docs, true_y, label_names, print_output=False,
+                                  filename='./per_utter_result.txt'):
+        """
+        Prints the utterance level prediction results into a file.
+        Result file will have columns 'SessionID', 'UtteranceID', 'Utterance',
+        'True label name', 'Predicted Label name by the model'
+        and each row is the utterance.
+
+        Parameters
+        ----------
+
+        uids : list[list[int]]
+            Nested list of utterance IDs with size (S, N_s, 1) for test data
+        docs : list[list[str]]
+            Nested list of utterances (text) with size (S, N_s, 1) for test data
+        true_y : list[list[int]]
+            Nested list of labels with size (S, N_s, 1) for test data
+        label_names : list or dict[int, str]
+            Mapping from a label index to the label name
+        filename : str
+            Path to the file name
+        """
+        if not os.path.isdir(os.path.dirname(filename)):
+            os.makedirs(os.path.dirname(filename))
+
+        with open(filename, 'w') as f:
+            f.write("SessionIndex|UtteranceID|Utterance|TrueLab|"+self.model_info+"\n")
+            if print_output:
+                print("SessionIndex|UtteranceID|Utterance|TrueLab|"+self.model_info)
+
+            for sidx in range(len(true_y)):
+                truel = true_y[sidx]
+                predl = self.predictions[sidx]
+
+                for i in range(len(truel)):
+                    f.write("%d|%d|%s|%s|%s\n" % (sidx, uids[sidx][i], docs[sidx][i],
+                                                label_names[truel[i]], label_names[predl[i]]))
+                    if print_output:
+                        print("%d|%d|%s|%s|%s" % (sidx, uids[sidx][i], docs[sidx][i],
+                                                      label_names[truel[i]], label_names[predl[i]]))
+
+    def print_utter_level_results_without_true_lab(self, uids, docs, label_names, print_output=False,
+                                                   filename='./per_utter_result.txt'):
+        """
+        Prints the utterance level prediction results into a file.
+        Result file will have columns 'SessionID', 'UtteranceID', 'Utterance',
+        'True label name', 'Predicted Label name by the model'
+        and each row is the utterance.
+
+        Parameters
+        ----------
+
+        uids : list[list[int]]
+            Nested list of utterance IDs with size (S, N_s, 1) for test data
+        docs : list[list[str]]
+            Nested list of utterances (text) with size (S, N_s, 1) for test data
+        label_names : list or dict[int, str]
+            Mapping from a label index to the label name
+        filename : str
+            Path to the file name
+        """
+        if not os.path.isdir(os.path.dirname(filename)):
+            os.makedirs(os.path.dirname(filename))
+
+        with open(filename, 'w') as f:
+            f.write("SessionIndex|UtteranceID|Utterance|"+self.model_info+"\n")
+            if print_output:
+                print("SessionIndex|UtteranceID|Utterance|"+self.model_info)
+
+            for sidx in range(len(uids)):
+                predl = self.predictions[sidx]
+
+                for i in range(len(uids[sidx])):
+                    f.write("%d|%d|%s|%s|\n" % (sidx, uids[sidx][i], docs[sidx][i],
+                                                  label_names[predl[i]]))
+                    if print_output:
+                        print("%d|%d|%s|%s|" % (sidx, uids[sidx][i], docs[sidx][i],
+                                                  label_names[predl[i]]))
