@@ -2,7 +2,7 @@
 Computational methods for evaluating patient-provider communication. <br>
 Logistic regression and HMM can be used for prediction.
 
-Jihyun Park <jihyunp@uci.edu> <br>
+Author: Jihyun Park <jihyunp@uci.edu> <br>
 Last updated: 6/22/2018
 
 ### load_model_and_predict.ipynb
@@ -23,6 +23,8 @@ A sample test data.
   
 ### models.py
 Classes for models are in the file.
+Details of the usage can be found in the demo iPython notebook file and the code docstring.
+
 - `DialogModel` <br>
 Base class for dialog model. Used when you have a set of results from another 
 base model (independent model) that is trained somewhere else (e.g. output from RNN). 
@@ -32,12 +34,10 @@ Predictions and output probabilities are loaded using `load_model()` in this cla
 - `LogRegDialogModel` <br>
 Class for running independent logistic regression model. <br>
 `fit_model(tr_data)` to train data, `predict(te_data)` to make prediction.<br>
-Details of the usage can be found in the code docstring.
 
 - `HMMDialogModel` <br>
 Class for running Hidden Markov Model on top of some base independent model. <br>
 `fit_model(tr_data)` to train data, `predict_viterbi(te_data)` to make prediction.<br>
-Details of the usage can be found in the code docstring.
  
 - `DialogResult` <br>
 Class that stores the results and calculates and prints out the scores.
