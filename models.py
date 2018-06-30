@@ -63,22 +63,20 @@ class DialogModel():
         self.marginals = get_marginals_from_y_seq(self.tr_data.uid2lid, self.tr_data.n_labels)
 
     def load_test_data(self, te_data_file, nouns_only=False, ignore_case=True,
-                 remove_numbers=False, sub_numbers=True, stopwords_dir="./stopwordlists",
-                 label_mappings=None, ngram_range=(1,1), max_np_len=2, min_wlen=1,
-                 min_dfreq=0, max_dfreq=0.8, min_sfreq=20,
-                 token_pattern=r"(?u)[A-Za-z\?\!\-\.']+", verbose=1,
+                 remove_numbers=False, sub_numbers=True,
+                 proper_nouns_dir="./stopwordlists", min_wlen=1,
+                 token_pattern=r"(?u)[A-Za-z\?\!\-\.']+", verbose=1, reload_corpus=True,
                  corpus_pkl='./corpus_te.pkl', tr_label_pkl='./label.pkl', tr_vocab_pkl='./vocab.pkl'):
         """
         Loads and processes test data.
         Arguments are the same as MHDTestData.
         """
         self.te_data = MHDTestData(te_data_file, nouns_only=nouns_only, ignore_case=ignore_case,
-                     remove_numbers=remove_numbers, sub_numbers=sub_numbers, stopwords_dir=stopwords_dir,
-                     label_mappings=label_mappings, ngram_range=ngram_range,
-                     max_np_len=max_np_len, min_wlen=min_wlen,
-                     min_dfreq=min_dfreq, max_dfreq=max_dfreq, min_sfreq=min_sfreq,
-                     token_pattern=token_pattern, verbose=verbose,
-                     corpus_pkl=corpus_pkl, tr_label_pkl=tr_label_pkl, tr_vocab_pkl=tr_vocab_pkl)
+                                   remove_numbers=remove_numbers, sub_numbers=sub_numbers,
+                                   proper_nouns_dir=proper_nouns_dir,
+                                   min_wlen=min_wlen, token_pattern=token_pattern, verbose=verbose,
+                                   reload_corpus=reload_corpus,
+                                   corpus_pkl=corpus_pkl, tr_label_pkl=tr_label_pkl, tr_vocab_pkl=tr_vocab_pkl)
 
         self.n_labels = self.te_data.n_labels
 
@@ -87,7 +85,8 @@ class DialogModel():
 
     def load_results(self, te_data_file, model_info='dialog_model', marginals=None,
                      predictions='./model123_pred.pkl', output_probs='./model123_prob.pkl',
-                     verbose=1, output_filename='./utter_level_result.txt'):
+                     verbose=1, output_filename='./utter_level_result.txt',
+                     corpus_pkl='./corpus_te.pkl', tr_label_pkl='./label.pkl', tr_vocab_pkl='./vocab.pkl'):
         """
         This is used when you are not running predictions but just want to load the results
         to calculate scores or to plug the results into HMM.
@@ -104,13 +103,23 @@ class DialogModel():
             Path to the pickle file that has nested list of predictions
         output_probs : str
             Path to the pickle file that has nested list of output probabilities
+        verbose : int
+            The level of verbosity in range [0,3]
+        corpus_pkl : str
+            Path to the pickle file where corpus related test data is (will be) saved.
+        tr_label_pkl : str
+            Path to the pickle file where label related training data is saved
+        tr_vocab_pkl : str
+            Path to the pickle file where vocab related training data is saved.
 
         Returns
         -------
         DialogResult
 
         """
-        self.load_test_data(te_data_file, verbose=verbose)
+
+        self.load_test_data(te_data_file, verbose=verbose,
+                            corpus_pkl=corpus_pkl, tr_label_pkl=tr_label_pkl, tr_vocab_pkl=tr_vocab_pkl)
         self.model_info = model_info
 
         n_labs = self.te_data.n_labels
@@ -131,7 +140,11 @@ class DialogModel():
         self.result = DialogResult(n_labs, pred, prob, marginals, model_info)
 
         if self.te_data.has_label:
+            if verbose > 0:
+                print("Calculate score")
             self.result.get_scores(labs)
+            if verbose > 0:
+                print("Printing utterance-level results to file "+output_filename)
             self.result.print_utter_level_results(ulists, docs, labs, self.te_data.lid2name,
                                                   filename=output_filename)
         return self.result
@@ -149,12 +162,12 @@ class LogRegDialogModel(DialogModel):
 
     def grid_search_parameter(self, data_file, C_values=None,
                               penalty_type="l2", solver='lbfgs',
-                              n_fold=3, verbose=1):
+                              n_fold=3, verbose=1,
+                              corpus_pkl='./corpus.pkl', label_pkl='./label.pkl', vocab_pkl='./vocab.pkl'):
         """
         A method that does grid search over the training data and finds the best
         regularization constant and returns the value.
         It creates self.grid_search, which is an obj of sklearn's GridSearchCV.
-
 
         Parameters
         ----------
@@ -171,7 +184,13 @@ class LogRegDialogModel(DialogModel):
             The number of cross validation folds.
             Default = 3. Large number is not recommended since there are labels that are quite rare.
         verbose : int
-            The level of verbosity.
+            The level of verbosity in range [0,3]
+        corpus_pkl : str
+            Path to the pickle file where corpus related data is (will be) saved.
+        label_pkl : str
+            Path to the pickle file where label related data is (will be) saved
+        vocab_pkl : str
+            Path to the pickle file where vocab related data is (will be) saved.
 
         Returns
         -------
@@ -179,7 +198,8 @@ class LogRegDialogModel(DialogModel):
             Best parameter (regularization constant)
         """
         if self.tr_data is None:
-            self.load_train_data(data_file, verbose=verbose)
+            self.load_train_data(data_file, verbose=verbose,
+                                 corpus_pkl=corpus_pkl, label_pkl=label_pkl, vocab_pkl=vocab_pkl)
 
         if self.trainX is None or self.trainy is None:
             trainX, self.vectorizer = self.tr_data.fit_bow(self.tr_data.corpus_txt, tfidf=True)
@@ -199,7 +219,8 @@ class LogRegDialogModel(DialogModel):
         return grid.best_params_
 
     def fit_model(self, data_file, penalty_type="l2", reg_const=1.0,
-                    solver='lbfgs', model_file='./lrdialog.pkl', verbose=1):
+                  solver='lbfgs', model_file='./lrdialog.pkl', verbose=1,
+                  corpus_pkl='./corpus.pkl', label_pkl='./label.pkl', vocab_pkl='./vocab.pkl'):
         """
         Loads training data from `data_file`, processes the data,
         fits the LR model, and then saves the model.
@@ -222,6 +243,12 @@ class LogRegDialogModel(DialogModel):
             File path to the pickle file of trained model.
         verbose : int
             The level of verbosity.
+        corpus_pkl : str
+            Path to the pickle file where corpus related data is (will be) saved.
+        label_pkl : str
+            Path to the pickle file where label related data is (will be) saved
+        vocab_pkl : str
+            Path to the pickle file where vocab related data is (will be) saved.
 
         Returns
         -------
@@ -229,7 +256,8 @@ class LogRegDialogModel(DialogModel):
 
         """
         if self.tr_data is None:
-            self.load_train_data(data_file, verbose=verbose)
+            self.load_train_data(data_file, verbose=verbose, corpus_pkl=corpus_pkl,
+                                 label_pkl=label_pkl, vocab_pkl=vocab_pkl)
 
         if self.trainX is None or self.trainy is None:
             trainX, self.vectorizer = self.tr_data.fit_bow(self.tr_data.corpus_txt, tfidf=True)
@@ -258,7 +286,8 @@ class LogRegDialogModel(DialogModel):
             print("Loading Logistic regression model to "+ model_file)
             self.model, self.vectorizer, self.marginals = cp.load(f)
 
-    def predict(self, te_data_file, verbose=1, output_filename='./utter_level_results.txt'):
+    def predict(self, te_data_file, verbose=1, output_filename='./utter_level_results.txt',
+                corpus_pkl='./corpus_te.pkl', tr_label_pkl='./label.pkl', tr_vocab_pkl='./vocab.pkl'):
         """
         Loads test data from 'te_data_file' and processes the data.
         Run prediction using the trained model.
@@ -267,7 +296,16 @@ class LogRegDialogModel(DialogModel):
         Parameters
         ----------
         te_data_file
-        verbose
+        verbose : int
+            The level of verbosity in range [0,3]
+        output_filename : str
+            Path to the file where the utter-level result will be saved.
+        corpus_pkl : str
+            Path to the pickle file where corpus related test data is (will be) saved.
+        tr_label_pkl : str
+            Path to the pickle file where label related training data is saved
+        tr_vocab_pkl : str
+            Path to the pickle file where vocab related training data is saved.
 
         Returns
         -------
@@ -276,7 +314,8 @@ class LogRegDialogModel(DialogModel):
         if not (self.model and self.vectorizer):
             print ("ERROR: Train or load the model first")
             return
-        self.load_test_data(te_data_file, verbose=verbose)
+        self.load_test_data(te_data_file, verbose=verbose,
+                            corpus_pkl=corpus_pkl, tr_label_pkl=tr_label_pkl, tr_vocab_pkl=tr_vocab_pkl)
 
         n_labs = self.te_data.n_labels
         self.model_info = "_".join(["LogReg", self.lr_type, self.model.penalty, str(self.model.C)])
@@ -288,8 +327,6 @@ class LogRegDialogModel(DialogModel):
         yhats = []
         for sidx in range(len(docs)):
             testX_s = MHDTestData.transform_bow(docs[sidx], self.vectorizer)
-            # if self.te_data.has_label:
-            #     testy_s = labs[sidx]
 
             outputprob = self.model.predict_proba(testX_s)
             outputprobs.append(outputprob)
@@ -298,10 +335,16 @@ class LogRegDialogModel(DialogModel):
 
         self.result = DialogResult(n_labs, yhats, outputprobs, self.marginals, self.model_info)
         if self.te_data.has_label:
+            if verbose > 0:
+                print("Calculate score")
             self.result.get_scores(labs)
+            if verbose > 0:
+                print("Printing utterance-level results to file "+output_filename)
             self.result.print_utter_level_results(ulists, docs, labs, self.te_data.lid2name,
                                                   filename=output_filename)
         else:
+            if verbose > 0:
+                print("Printing utterance-level results to file "+output_filename)
             self.result.print_utter_level_results_without_true_lab(ulists, docs, self.te_data.lid2name,
                                                                    filename=output_filename)
         return self.result
@@ -334,7 +377,8 @@ class HMMDialogModel(DialogModel):
         self.start_prob, self.end_prob = None, None
         self.log_start_prob, self.log_end_prob = None, None
 
-    def fit_model(self, data_file, model_file='./hmmdialog.pkl'):
+    def fit_model(self, data_file, model_file='./hmmdialog.pkl', verbose=1,
+                  corpus_pkl='./corpus.pkl', label_pkl='./label.pkl', vocab_pkl='./vocab.pkl'):
         """
         Loads training data from 'data_file', processes the data,
         gets transition matrix and other probabilities and saves the model.
@@ -343,14 +387,25 @@ class HMMDialogModel(DialogModel):
         fit
         Parameters
         ----------
-        data_file
-        model_file
+        data_file : str
+            Path to the training data file.
+        model_file : str
+            Path to the pickle file where the Hidden Markov Model related data will be saved.
+        verbose : int
+            The level of verbosity in range [0,3]
+        corpus_pkl : str
+            Path to the pickle file where corpus related data is (will be) saved.
+        label_pkl : str
+            Path to the pickle file where label related data is (will be) saved
+        vocab_pkl : str
+            Path to the pickle file where vocab related data is (will be) saved.
 
         Returns
         -------
 
         """
-        self.load_train_data(data_file)
+        self.load_train_data(data_file, verbose=verbose,
+                             corpus_pkl=corpus_pkl, label_pkl=label_pkl, vocab_pkl=vocab_pkl)
         self.n_labels = self.tr_data.n_labels
         tr_data_nested = self.tr_data.get_utter_level_data_from_sids(self.tr_data.sstt2uid.keys())
         ulists_tr, docs_tr, labs_tr = tr_data_nested
@@ -378,16 +433,36 @@ class HMMDialogModel(DialogModel):
             self.log_start_prob = np.log(self.start_prob)
             self.log_end_prob = np.log(self.end_prob)
 
-    def predict_viterbi(self, te_data_file, output_filename="./utter_level_result.txt"):# spkr_transitions=False):
+    def predict_viterbi(self, te_data_file, verbose=1, output_filename="./utter_level_result.txt",
+                        corpus_pkl='./corpus_te.pkl', tr_label_pkl='./label.pkl', tr_vocab_pkl='./vocab.pkl'):
+                         # spkr_transitions=False):
+
         """
         Viterbi decoding using output probabilites from the base model,
         marginal probabilities, and transition probabilities.
 
+        Parameters
+        ----------
+        te_data_file : str
+            Path to the test data file
+        verbose : int
+            The level of verbosity in range [0,3]
+        output_filename : str
+            Path to the utterance-level result file.
+        corpus_pkl : str
+            Path to the pickle file where corpus related test data is (will be) saved.
+        tr_label_pkl : str
+            Path to the pickle file where label related training data is saved
+        tr_vocab_pkl : str
+            Path to the pickle file where vocab related training data is saved.
         """
         if self.log_transitions is None:
             print ("ERROR: Train or load the model first")
             return
-        self.load_test_data(te_data_file)
+
+        self.load_test_data(te_data_file, verbose=verbose,
+                            corpus_pkl=corpus_pkl, tr_label_pkl=tr_label_pkl, tr_vocab_pkl=tr_vocab_pkl)
+
         self.model_info = "_".join(["HMM", self.base_model.model_info])
 
         te_data_nested = self.te_data.get_utter_level_data_from_sids(sorted(self.te_data.sstt2uid.keys()))
@@ -406,10 +481,16 @@ class HMMDialogModel(DialogModel):
         self.result = DialogResult(self.n_labels, yhats, None, self.marginals,
                                    self.model_info, output_scores)
         if self.te_data.has_label:
+            if verbose > 0:
+                print("Calculate score")
             self.result.get_scores(labs)
+            if verbose > 0:
+                print("Printing utterance-level results to file "+output_filename)
             self.result.print_utter_level_results(ulists, docs, labs, self.te_data.lid2name,
                                                   filename=output_filename)
         else:
+            if verbose > 0:
+                print("Printing utterance-level results to file "+output_filename)
             self.result.print_utter_level_results_without_true_lab(ulists, docs, self.te_data.lid2name,
                                                                    filename=output_filename)
         return self.result
@@ -571,7 +652,6 @@ class DialogResult():
         """
         if not os.path.isdir(os.path.dirname(filename)):
             os.makedirs(os.path.dirname(filename))
-
         with open(filename, 'w') as f:
             f.write("SessionIndex|UtteranceID|Utterance|TrueLab|"+self.model_info+"\n")
             if print_output:

@@ -121,7 +121,7 @@ class MHDData():
                  remove_numbers=False, sub_numbers=True,
                  stopwords_dir="./stopwordlists", proper_nouns_dir="./stopwordlists",
                  label_mappings=None, ngram_range=(1,2), max_np_len=3, min_wlen=1,
-                 min_dfreq=0.0001, max_dfreq=0.9, min_sfreq=5,
+                 min_dfreq=0.0001, max_dfreq=0.9, min_sfreq=5, sep="|",
                  token_pattern=r"(?u)[A-Za-z\?\!\-\.']+", verbose=1,
                  corpus_pkl='./corpus.pkl', label_pkl='./label.pkl', vocab_pkl='./vocab.pkl'):
         """
@@ -199,7 +199,7 @@ class MHDData():
         self.stopwords = preproc.get_stopwords(stopwords_dir=stopwords_dir)
         self.stopwords_all = self.stopwords.union() # do union for copying
 
-        self.load_corpus(data_file, sep="|", min_wcnt=min_wlen,
+        self.load_corpus(data_file, sep=sep, min_wcnt=min_wlen,
                          min_np_len=self.max_np_len, max_np_len=max_np_len,
                          token_pattern=token_pattern,
                          ignore_case=ignore_case, remove_numbers=remove_numbers,
@@ -810,14 +810,71 @@ class MHDData():
 class MHDTrainData(MHDData):
 
     def __init__(self, data_file, nouns_only=False, ignore_case=True,
-                 remove_numbers=False, sub_numbers=True, stopwords_dir="./stopwordlists",
+                 remove_numbers=False, sub_numbers=True,
+                 stopwords_dir="./stopwordlists", proper_nouns_dir="./stopwordlists",
                  label_mappings=None, ngram_range=(1,1), max_np_len=2, min_wlen=1,
                  min_dfreq=0.0, max_dfreq=0.9, min_sfreq=20,
                  token_pattern=r"(?u)[A-Za-z\?\!\-\.']+", verbose=1,
                  corpus_pkl='./corpus.pkl', label_pkl='./label.pkl', vocab_pkl='./vocab.pkl'):
+        """
+        Parameters
+        ----------
+        data_file : str
+            File path to the data
+        nouns_only : bool
+            Only include nouns
+        ignore_case : bool
+            True if ignoring cases (transformed to all lower case, default)
+        remove_numbers : bool
+            Remove all digits if True, default is False
+        sub_numbers : bool
+            Rather than removing all digits, substitute them to symbol -num-. default True
+        stopwords_dir : str
+            Path to the stopwords directory
+        proper_nouns_dir : str
+            Path to the proper nouns directory
+        label_mappings : dict or None
+            Label mappings that can be use for label merging/cleaning.
+            If None (default), rare labels are mapped to the 'Other' label (topic code: '37')
+        ngram_range : tuple
+            The lower and upper boundary of the range of n-values for different n-grams
+            to be extracted. (Maximum length of noun phrase can be different from this.)
+        max_np_len : int
+            Maximum length of noun phrases to be considered.
+        min_wlen : int
+            Minimum word length of an utterance to be considered.
+            If an utterance has word length less than 'min_wlen', the utterance is skipped.
+        min_dfreq : float
+            float in range [0.0, 1.0]
+            When building the vocabulary ignore terms that have
+            a document frequency strictly lower than the given threshold.
+            The parameter represents a proportion of documents, integer absolute counts.
+            NOTE: Here, each utterance is treated as a document, therefore very small value would
+            still reduce the size of vocabulary. Because the utterances are very short therefore most of the words have very
+            small document frequencies.
+        max_dfreq : float
+            float in range [0.0, 1.0]
+            When building the vocabulary ignore terms that have a document frequency strictly higher than
+            the given threshold (corpus-specific stop words).
+            The parameter represents a proportion of documents, integer absolute counts.
+        min_sfreq : int
+            If there are labels that appear less than this number of sessions,
+            the labels are merged to the 'other' label (topic code: '37')
+        token_pattern : str
+            Regular expression denoting what constitutes a 'token'.
+        verbose : int in range [0,3]
+            The level of verbosity. Larger value means more verbosity.
+        corpus_pkl : str
+            Path to the pickle file that saves corpus related data.
+        label_pkl : str
+            Path to the pickle file that saves label related data.
+        vocab_pkl : str
+            Path to the pickle file that saves vocab related data.
+        """
 
         MHDData.__init__(self, data_file, nouns_only=nouns_only, ignore_case=ignore_case,
-                         remove_numbers=remove_numbers, sub_numbers=sub_numbers, stopwords_dir=stopwords_dir,
+                         remove_numbers=remove_numbers, sub_numbers=sub_numbers,
+                         stopwords_dir=stopwords_dir, proper_nouns_dir=proper_nouns_dir,
                          label_mappings=label_mappings, ngram_range=ngram_range,
                          max_np_len=max_np_len, min_wlen=min_wlen,
                          min_dfreq=min_dfreq, max_dfreq=max_dfreq, min_sfreq=min_sfreq,
@@ -1157,12 +1214,40 @@ class MHDTestData(MHDData):
         True if the data has label
     """
     def __init__(self, data_file, nouns_only=False, ignore_case=True,
-                 remove_numbers=False, sub_numbers=True, stopwords_dir="./stopwordlists",
-                 label_mappings=None, ngram_range=(1,1), max_np_len=2, min_wlen=1,
-                 min_dfreq=0.0, max_dfreq=0.9, min_sfreq=10,
+                 remove_numbers=False, sub_numbers=True,
+                 proper_nouns_dir="./stopwordlists", min_wlen=1,
                  token_pattern=r"(?u)[A-Za-z\?\!\-\.']+", verbose=1,
                  corpus_pkl='./corpus_test.pkl', tr_label_pkl="./label.pkl", tr_vocab_pkl="./vocab.pkl",
                  reload_corpus=True):
+        """
+        Parameters
+        ----------
+        data_file : str
+            File path to the data
+        nouns_only : bool
+            Only include nouns
+        ignore_case : bool
+            True if ignoring cases (transformed to all lower case, default)
+        remove_numbers : bool
+            Remove all digits if True, default is False
+        sub_numbers : bool
+            Rather than removing all digits, substitute them to symbol -num-. default True
+        proper_nouns_dir : str
+            Path to the proper nouns directory
+        min_wlen : int
+            Minimum word length of an utterance to be considered.
+            If an utterance has word length less than 'min_wlen', the utterance is skipped.
+        token_pattern : str
+            Regular expression denoting what constitutes a 'token'.
+        verbose : int in range [0,3]
+            The level of verbosity. Larger value means more verbosity.
+        corpus_pkl : str
+            Path to the pickle file that saves corpus related data.
+        label_pkl : str
+            Path to the pickle file that saves label related data.
+        vocab_pkl : str
+            Path to the pickle file that saves vocab related data.
+        """
 
         self.verbose = verbose
         cl_lab_pkl = tr_label_pkl.split(".pkl")[0] + "_cleaned.pkl"
@@ -1176,17 +1261,15 @@ class MHDTestData(MHDData):
                     os.remove(corpus_pkl)
 
             MHDData.__init__(self, data_file, nouns_only=nouns_only, ignore_case=ignore_case,
-                             remove_numbers=remove_numbers, sub_numbers=sub_numbers, stopwords_dir=stopwords_dir,
-                             label_mappings=label_mappings, ngram_range=ngram_range,
-                             max_np_len=max_np_len, min_wlen=min_wlen,
-                             min_dfreq=min_dfreq, max_dfreq=max_dfreq, min_sfreq=min_sfreq,
-                             token_pattern=token_pattern, verbose=verbose,
+                             remove_numbers=remove_numbers, sub_numbers=sub_numbers,
+                             proper_nouns_dir=proper_nouns_dir,
+                             min_wlen=min_wlen, token_pattern=token_pattern, verbose=verbose,
                              corpus_pkl=corpus_pkl, label_pkl="", vocab_pkl="")
 
             self.n_utters = len(self.uid2sstt)
             self.n_vocab = len(self.vocabulary)
             self.n_labels = len(self.lid2lab)
-            self.clean_labels(min_sfreq, self.label_mappings)
+            self.clean_labels(label_mappings=self.label_mappings)
 
     def print_stats(self):
         print("Number of sessions: %d (ones that have text)" % len(self.sstt2uid))
@@ -1201,7 +1284,7 @@ class MHDTestData(MHDData):
                     token_pattern=r"(?u)\b\w[A-Za-z']*\b",
                     ignore_case=True, remove_numbers=False, sub_numbers=True, parser=None, stemmer_type=None,
                     proper_nouns_dir="./stopwordlists",
-                    corpus_pkl='./corpus.pkl', label_pkl='./labels.pkl', vocab_pkl='./vocab.pkl'):
+                    corpus_pkl='./corpus_te.pkl', label_pkl='', vocab_pkl=''):
         """
         Read corpus from 'corpus_file', which is the test file.
         cleans the text, (cleaning is mostly done in preprocess.py)
@@ -1210,21 +1293,30 @@ class MHDTestData(MHDData):
 
         Parameters
         ----------
-        corpus_file
-        sep
-        min_wcnt
-        min_np_len
-        max_np_len
-        token_pattern
-        ignore_case
-        remove_numbers
-        sub_numbers
-        parser
-        stemmer_type
-        proper_nouns_dir
-        corpus_pkl
-        label_pkl
-        vocab_pkl
+        corpus_file : str
+            Path to the test file to be preprocessed.
+        sep : str
+            Delimiter/separater of delimited file. "|" for MHD file.
+        min_wcnt : int
+            Minimum length of a sentence in words to be considered.
+        min_np_len : int
+            Redundant variable since the class uses the vocabulary from the training data
+        max_np_len : int
+            Redundant variable since the class uses the vocabulary from the training data
+        token_pattern : str
+            Redundant variable since the class uses the vocabulary from the training data
+        ignore_case : bool
+        remove_numbers : bool
+        sub_numbers : bool
+        parser : None or str
+        stemmer_type : None or str
+        proper_nouns_dir : str
+        corpus_pkl : str
+            Path to the corpus pickle file.
+        label_pkl : str
+            Redundant variable since the class uses the labels from the training data
+        vocab_pkl : str
+            Redundant variable since the class uses the vocabulary from the training data
         """
         if self.verbose > 0:
             print('Loading and preprocessing the corpus with labels')
