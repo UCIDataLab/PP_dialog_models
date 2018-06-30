@@ -40,50 +40,50 @@ class DialogModel():
     def fit_model(self, data_file, model_file):
         pass
 
-    def load_train_data(self, data_file, nouns_only=False, ignore_case=True,
-                        remove_numbers=False, sub_numbers=True, stopwords_dir="./stopwordlists",
-                        label_mappings=None, ngram_range=(1,1), max_np_len=2, min_wlen=1,
-                        min_dfreq=0, max_dfreq=0.8, min_sfreq=20,
-                        token_pattern=r"(?u)[A-Za-z\?\!\-\.']+", verbose=1,
-                        corpus_pkl='./corpus.pkl', label_pkl='./label.pkl', vocab_pkl='./vocab.pkl'):
-        """
-        Loads and processes training data.
-        Also creates marginal probabilities.
-        Arguments are the same as MHDTrainData.
-        """
+    # def load_train_data(self, data_file, nouns_only=False, ignore_case=True,
+    #                     remove_numbers=False, sub_numbers=True, stopwords_dir="./stopwordlists",
+    #                     label_mappings=None, ngram_range=(1,1), max_np_len=2, min_wlen=1,
+    #                     min_dfreq=0, max_dfreq=0.8, min_sfreq=20,
+    #                     token_pattern=r"(?u)[A-Za-z\?\!\-\.']+", verbose=1,
+    #                     corpus_pkl='./corpus.pkl', label_pkl='./label.pkl', vocab_pkl='./vocab.pkl'):
+    #     """
+    #     Loads and processes training data.
+    #     Also creates marginal probabilities.
+    #     Arguments are the same as MHDTrainData.
+    #     """
+    #
+    #     self.tr_data = MHDTrainData(data_file, nouns_only=nouns_only, ignore_case=ignore_case,
+    #              remove_numbers=remove_numbers, sub_numbers=sub_numbers, stopwords_dir=stopwords_dir,
+    #              label_mappings=label_mappings, ngram_range=ngram_range,
+    #              max_np_len=max_np_len, min_wlen=min_wlen,
+    #              min_dfreq=min_dfreq, max_dfreq=max_dfreq, min_sfreq=min_sfreq,
+    #              token_pattern=token_pattern, verbose=verbose,
+    #              corpus_pkl=corpus_pkl, label_pkl=label_pkl, vocab_pkl=vocab_pkl)
+    #
+    #     self.marginals = get_marginals_from_y_seq(self.tr_data.uid2lid, self.tr_data.n_labels)
 
-        self.tr_data = MHDTrainData(data_file, nouns_only=nouns_only, ignore_case=ignore_case,
-                 remove_numbers=remove_numbers, sub_numbers=sub_numbers, stopwords_dir=stopwords_dir,
-                 label_mappings=label_mappings, ngram_range=ngram_range,
-                 max_np_len=max_np_len, min_wlen=min_wlen,
-                 min_dfreq=min_dfreq, max_dfreq=max_dfreq, min_sfreq=min_sfreq,
-                 token_pattern=token_pattern, verbose=verbose,
-                 corpus_pkl=corpus_pkl, label_pkl=label_pkl, vocab_pkl=vocab_pkl)
-
-        self.marginals = get_marginals_from_y_seq(self.tr_data.uid2lid, self.tr_data.n_labels)
-
-    def load_test_data(self, te_data_file, nouns_only=False, ignore_case=True,
-                 remove_numbers=False, sub_numbers=True,
-                 proper_nouns_dir="./stopwordlists", min_wlen=1,
-                 token_pattern=r"(?u)[A-Za-z\?\!\-\.']+", verbose=1, reload_corpus=True,
-                 corpus_pkl='./corpus_te.pkl', tr_label_pkl='./label.pkl', tr_vocab_pkl='./vocab.pkl'):
-        """
-        Loads and processes test data.
-        Arguments are the same as MHDTestData.
-        """
-        self.te_data = MHDTestData(te_data_file, nouns_only=nouns_only, ignore_case=ignore_case,
-                                   remove_numbers=remove_numbers, sub_numbers=sub_numbers,
-                                   proper_nouns_dir=proper_nouns_dir,
-                                   min_wlen=min_wlen, token_pattern=token_pattern, verbose=verbose,
-                                   reload_corpus=reload_corpus,
-                                   corpus_pkl=corpus_pkl, tr_label_pkl=tr_label_pkl, tr_vocab_pkl=tr_vocab_pkl)
-
-        self.n_labels = self.te_data.n_labels
+    # def load_test_data(self, te_data_file, nouns_only=False, ignore_case=True,
+    #              remove_numbers=False, sub_numbers=True,
+    #              proper_nouns_dir="./stopwordlists", min_wlen=1,
+    #              token_pattern=r"(?u)[A-Za-z\?\!\-\.']+", verbose=1, reload_corpus=True,
+    #              corpus_pkl='./corpus_te.pkl', tr_label_pkl='./label.pkl', tr_vocab_pkl='./vocab.pkl'):
+    #     """
+    #     Loads and processes test data.
+    #     Arguments are the same as MHDTestData.
+    #     """
+    #     self.te_data = MHDTestData(te_data_file, nouns_only=nouns_only, ignore_case=ignore_case,
+    #                                remove_numbers=remove_numbers, sub_numbers=sub_numbers,
+    #                                proper_nouns_dir=proper_nouns_dir,
+    #                                min_wlen=min_wlen, token_pattern=token_pattern, verbose=verbose,
+    #                                reload_corpus=reload_corpus,
+    #                                corpus_pkl=corpus_pkl, tr_label_pkl=tr_label_pkl, tr_vocab_pkl=tr_vocab_pkl)
+    #
+    #     self.n_labels = self.te_data.n_labels
 
     def predict(self, te_data_file):
         pass
 
-    def load_results(self, te_data_file, model_info='dialog_model', marginals=None,
+    def load_results(self, test_data, model_info='dialog_model', marginals=None,
                      predictions='./model123_pred.pkl', output_probs='./model123_prob.pkl',
                      verbose=1, output_filename='./utter_level_result.txt',
                      corpus_pkl='./corpus_te.pkl', tr_label_pkl='./label.pkl', tr_vocab_pkl='./vocab.pkl'):
@@ -93,8 +93,8 @@ class DialogModel():
 
         Parameters
         ----------
-        te_data_file : str
-            Path to the test data file.
+        test_data : MHDTestData
+            An object of MHDTestData
         model_info : str
             Model information. e.g. "HMM_LR_OVR"
         marginals : np.array or None
@@ -118,8 +118,10 @@ class DialogModel():
 
         """
 
-        self.load_test_data(te_data_file, verbose=verbose,
-                            corpus_pkl=corpus_pkl, tr_label_pkl=tr_label_pkl, tr_vocab_pkl=tr_vocab_pkl)
+        # self.load_test_data(te_data_file, verbose=verbose,
+        #                     corpus_pkl=corpus_pkl, tr_label_pkl=tr_label_pkl, tr_vocab_pkl=tr_vocab_pkl)
+        self.te_data = test_data
+        self.n_labels = self.te_data.n_labels
         self.model_info = model_info
 
         n_labs = self.te_data.n_labels
@@ -160,10 +162,9 @@ class LogRegDialogModel(DialogModel):
         self.lr_type = lr_type
         self.trainX, self.trainy = None, None
 
-    def grid_search_parameter(self, data_file, C_values=None,
+    def grid_search_parameter(self, train_data, C_values=None,
                               penalty_type="l2", solver='lbfgs',
-                              n_fold=3, verbose=1,
-                              corpus_pkl='./corpus.pkl', label_pkl='./label.pkl', vocab_pkl='./vocab.pkl'):
+                              n_fold=3, verbose=1):
         """
         A method that does grid search over the training data and finds the best
         regularization constant and returns the value.
@@ -171,8 +172,8 @@ class LogRegDialogModel(DialogModel):
 
         Parameters
         ----------
-        data_file : str
-            File path to the training data.
+        train_data : MHDTrainData
+            An object of MHDTrainData for training data.
         C_values : iterable or None
             Values to be searched to find the best C value.
             If None (default), C value is searched over the values np.arange(0.6,3,0.1)
@@ -198,8 +199,8 @@ class LogRegDialogModel(DialogModel):
             Best parameter (regularization constant)
         """
         if self.tr_data is None:
-            self.load_train_data(data_file, verbose=verbose,
-                                 corpus_pkl=corpus_pkl, label_pkl=label_pkl, vocab_pkl=vocab_pkl)
+            self.tr_data = train_data
+            self.marginals = get_marginals_from_y_seq(self.tr_data.uid2lid, self.tr_data.n_labels)
 
         if self.trainX is None or self.trainy is None:
             trainX, self.vectorizer = self.tr_data.fit_bow(self.tr_data.corpus_txt, tfidf=True)
@@ -218,9 +219,8 @@ class LogRegDialogModel(DialogModel):
         print("Best regularization constant: %.2f" % grid.best_params_['C'])
         return grid.best_params_
 
-    def fit_model(self, data_file, penalty_type="l2", reg_const=1.0,
-                  solver='lbfgs', model_file='./lrdialog.pkl', verbose=1,
-                  corpus_pkl='./corpus.pkl', label_pkl='./label.pkl', vocab_pkl='./vocab.pkl'):
+    def fit_model(self, train_data, penalty_type="l2", reg_const=1.0,
+                  solver='lbfgs', model_file='./lrdialog.pkl', verbose=1):
         """
         Loads training data from `data_file`, processes the data,
         fits the LR model, and then saves the model.
@@ -228,8 +228,8 @@ class LogRegDialogModel(DialogModel):
 
         Parameters
         ----------
-        data_file : str
-            File path to the training data.
+        train_data : MHDTrainData
+            An object of MHDTrainData for training data
         penalty_type : str
             Penalty type of logistic regression. "l2" is default.
         reg_const : float
@@ -243,12 +243,6 @@ class LogRegDialogModel(DialogModel):
             File path to the pickle file of trained model.
         verbose : int
             The level of verbosity.
-        corpus_pkl : str
-            Path to the pickle file where corpus related data is (will be) saved.
-        label_pkl : str
-            Path to the pickle file where label related data is (will be) saved
-        vocab_pkl : str
-            Path to the pickle file where vocab related data is (will be) saved.
 
         Returns
         -------
@@ -256,8 +250,8 @@ class LogRegDialogModel(DialogModel):
 
         """
         if self.tr_data is None:
-            self.load_train_data(data_file, verbose=verbose, corpus_pkl=corpus_pkl,
-                                 label_pkl=label_pkl, vocab_pkl=vocab_pkl)
+            self.tr_data = train_data
+            self.marginals = get_marginals_from_y_seq(self.tr_data.uid2lid, self.tr_data.n_labels)
 
         if self.trainX is None or self.trainy is None:
             trainX, self.vectorizer = self.tr_data.fit_bow(self.tr_data.corpus_txt, tfidf=True)
@@ -270,10 +264,13 @@ class LogRegDialogModel(DialogModel):
 
         self.model = LogisticRegression(penalty=penalty_type, C=reg_const,
                                         multi_class=self.lr_type, solver=solver)
+        if verbose > 0:
+            print("Fitting LogReg Model")
         self.model = self.model.fit(trainX, trainy)
         # Saves model into pkl
         with open(model_file, 'wb') as f:
-            print("Saving Logistic regression model to "+ model_file)
+            if verbose > 0:
+                print("Saving Logistic regression model to "+ model_file)
             cp.dump((self.model, self.vectorizer, self.marginals), f, protocol=cp.HIGHEST_PROTOCOL)
         return self.model
 
@@ -283,10 +280,10 @@ class LogRegDialogModel(DialogModel):
         self.model, self.vectorizer, self.marginals are updated.
         """
         with open(model_file, 'rb') as f:
-            print("Loading Logistic regression model to "+ model_file)
+            print("Loading Logistic regression model from "+ model_file)
             self.model, self.vectorizer, self.marginals = cp.load(f)
 
-    def predict(self, te_data_file, verbose=1, output_filename='./utter_level_results.txt',
+    def predict(self, test_data, verbose=1, output_filename='./utter_level_results.txt',
                 corpus_pkl='./corpus_te.pkl', tr_label_pkl='./label.pkl', tr_vocab_pkl='./vocab.pkl'):
         """
         Loads test data from 'te_data_file' and processes the data.
@@ -295,7 +292,8 @@ class LogRegDialogModel(DialogModel):
 
         Parameters
         ----------
-        te_data_file
+        test_data : MHDTestData
+            An object of MHDTestData for test dataset.
         verbose : int
             The level of verbosity in range [0,3]
         output_filename : str
@@ -314,8 +312,10 @@ class LogRegDialogModel(DialogModel):
         if not (self.model and self.vectorizer):
             print ("ERROR: Train or load the model first")
             return
-        self.load_test_data(te_data_file, verbose=verbose,
-                            corpus_pkl=corpus_pkl, tr_label_pkl=tr_label_pkl, tr_vocab_pkl=tr_vocab_pkl)
+        # self.load_test_data(te_data_file, verbose=verbose,
+        #                     corpus_pkl=corpus_pkl, tr_label_pkl=tr_label_pkl, tr_vocab_pkl=tr_vocab_pkl)
+        self.te_data = test_data
+        self.n_labels = self.te_data.n_labels
 
         n_labs = self.te_data.n_labels
         self.model_info = "_".join(["LogReg", self.lr_type, self.model.penalty, str(self.model.C)])
@@ -377,8 +377,7 @@ class HMMDialogModel(DialogModel):
         self.start_prob, self.end_prob = None, None
         self.log_start_prob, self.log_end_prob = None, None
 
-    def fit_model(self, data_file, model_file='./hmmdialog.pkl', verbose=1,
-                  corpus_pkl='./corpus.pkl', label_pkl='./label.pkl', vocab_pkl='./vocab.pkl'):
+    def fit_model(self, train_data, model_file='./hmmdialog.pkl', verbose=1):
         """
         Loads training data from 'data_file', processes the data,
         gets transition matrix and other probabilities and saves the model.
@@ -387,25 +386,20 @@ class HMMDialogModel(DialogModel):
         fit
         Parameters
         ----------
-        data_file : str
-            Path to the training data file.
+        train_data : MHDTrainData
+            An object of MHDTrainData for training data.
         model_file : str
             Path to the pickle file where the Hidden Markov Model related data will be saved.
         verbose : int
             The level of verbosity in range [0,3]
-        corpus_pkl : str
-            Path to the pickle file where corpus related data is (will be) saved.
-        label_pkl : str
-            Path to the pickle file where label related data is (will be) saved
-        vocab_pkl : str
-            Path to the pickle file where vocab related data is (will be) saved.
 
         Returns
         -------
 
         """
-        self.load_train_data(data_file, verbose=verbose,
-                             corpus_pkl=corpus_pkl, label_pkl=label_pkl, vocab_pkl=vocab_pkl)
+        self.tr_data = train_data
+        self.marginals = get_marginals_from_y_seq(self.tr_data.uid2lid, self.tr_data.n_labels)
+
         self.n_labels = self.tr_data.n_labels
         tr_data_nested = self.tr_data.get_utter_level_data_from_sids(self.tr_data.sstt2uid.keys())
         ulists_tr, docs_tr, labs_tr = tr_data_nested
@@ -433,18 +427,16 @@ class HMMDialogModel(DialogModel):
             self.log_start_prob = np.log(self.start_prob)
             self.log_end_prob = np.log(self.end_prob)
 
-    def predict_viterbi(self, te_data_file, verbose=1, output_filename="./utter_level_result.txt",
-                        corpus_pkl='./corpus_te.pkl', tr_label_pkl='./label.pkl', tr_vocab_pkl='./vocab.pkl'):
+    def predict_viterbi(self, test_data, verbose=1, output_filename="./utter_level_result.txt"):
                          # spkr_transitions=False):
-
         """
         Viterbi decoding using output probabilites from the base model,
         marginal probabilities, and transition probabilities.
 
         Parameters
         ----------
-        te_data_file : str
-            Path to the test data file
+        test_data : MHDTestData
+            An object of MHDTestData for test data.
         verbose : int
             The level of verbosity in range [0,3]
         output_filename : str
@@ -460,8 +452,8 @@ class HMMDialogModel(DialogModel):
             print ("ERROR: Train or load the model first")
             return
 
-        self.load_test_data(te_data_file, verbose=verbose,
-                            corpus_pkl=corpus_pkl, tr_label_pkl=tr_label_pkl, tr_vocab_pkl=tr_vocab_pkl)
+        self.te_data = test_data
+        self.n_labels = self.te_data.n_labels
 
         self.model_info = "_".join(["HMM", self.base_model.model_info])
 
