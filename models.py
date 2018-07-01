@@ -40,53 +40,12 @@ class DialogModel():
     def fit_model(self, data_file, model_file):
         pass
 
-    # def load_train_data(self, data_file, nouns_only=False, ignore_case=True,
-    #                     remove_numbers=False, sub_numbers=True, stopwords_dir="./stopwordlists",
-    #                     label_mappings=None, ngram_range=(1,1), max_np_len=2, min_wlen=1,
-    #                     min_dfreq=0, max_dfreq=0.8, min_sfreq=20,
-    #                     token_pattern=r"(?u)[A-Za-z\?\!\-\.']+", verbose=1,
-    #                     corpus_pkl='./corpus.pkl', label_pkl='./label.pkl', vocab_pkl='./vocab.pkl'):
-    #     """
-    #     Loads and processes training data.
-    #     Also creates marginal probabilities.
-    #     Arguments are the same as MHDTrainData.
-    #     """
-    #
-    #     self.tr_data = MHDTrainData(data_file, nouns_only=nouns_only, ignore_case=ignore_case,
-    #              remove_numbers=remove_numbers, sub_numbers=sub_numbers, stopwords_dir=stopwords_dir,
-    #              label_mappings=label_mappings, ngram_range=ngram_range,
-    #              max_np_len=max_np_len, min_wlen=min_wlen,
-    #              min_dfreq=min_dfreq, max_dfreq=max_dfreq, min_sfreq=min_sfreq,
-    #              token_pattern=token_pattern, verbose=verbose,
-    #              corpus_pkl=corpus_pkl, label_pkl=label_pkl, vocab_pkl=vocab_pkl)
-    #
-    #     self.marginals = get_marginals_from_y_seq(self.tr_data.uid2lid, self.tr_data.n_labels)
-
-    # def load_test_data(self, te_data_file, nouns_only=False, ignore_case=True,
-    #              remove_numbers=False, sub_numbers=True,
-    #              proper_nouns_dir="./stopwordlists", min_wlen=1,
-    #              token_pattern=r"(?u)[A-Za-z\?\!\-\.']+", verbose=1, reload_corpus=True,
-    #              corpus_pkl='./corpus_te.pkl', tr_label_pkl='./label.pkl', tr_vocab_pkl='./vocab.pkl'):
-    #     """
-    #     Loads and processes test data.
-    #     Arguments are the same as MHDTestData.
-    #     """
-    #     self.te_data = MHDTestData(te_data_file, nouns_only=nouns_only, ignore_case=ignore_case,
-    #                                remove_numbers=remove_numbers, sub_numbers=sub_numbers,
-    #                                proper_nouns_dir=proper_nouns_dir,
-    #                                min_wlen=min_wlen, token_pattern=token_pattern, verbose=verbose,
-    #                                reload_corpus=reload_corpus,
-    #                                corpus_pkl=corpus_pkl, tr_label_pkl=tr_label_pkl, tr_vocab_pkl=tr_vocab_pkl)
-    #
-    #     self.n_labels = self.te_data.n_labels
-
     def predict(self, te_data_file):
         pass
 
     def load_results(self, test_data, model_info='dialog_model', marginals=None,
                      predictions='./model123_pred.pkl', output_probs='./model123_prob.pkl',
-                     verbose=1, output_filename='./utter_level_result.txt',
-                     corpus_pkl='./corpus_te.pkl', tr_label_pkl='./label.pkl', tr_vocab_pkl='./vocab.pkl'):
+                     verbose=1, output_filename='./utter_level_result.txt'):
         """
         This is used when you are not running predictions but just want to load the results
         to calculate scores or to plug the results into HMM.
@@ -118,8 +77,6 @@ class DialogModel():
 
         """
 
-        # self.load_test_data(te_data_file, verbose=verbose,
-        #                     corpus_pkl=corpus_pkl, tr_label_pkl=tr_label_pkl, tr_vocab_pkl=tr_vocab_pkl)
         self.te_data = test_data
         self.n_labels = self.te_data.n_labels
         self.model_info = model_info
@@ -312,8 +269,7 @@ class LogRegDialogModel(DialogModel):
         if not (self.model and self.vectorizer):
             print ("ERROR: Train or load the model first")
             return
-        # self.load_test_data(te_data_file, verbose=verbose,
-        #                     corpus_pkl=corpus_pkl, tr_label_pkl=tr_label_pkl, tr_vocab_pkl=tr_vocab_pkl)
+
         self.te_data = test_data
         self.n_labels = self.te_data.n_labels
 
