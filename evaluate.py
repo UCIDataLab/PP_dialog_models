@@ -7,6 +7,20 @@ from sklearn.metrics import precision_score, recall_score, roc_auc_score, f1_sco
 
 
 def R_precision(true_y, pred_y):
+    """
+    Given two flat np.arrays, calculate R-precision score.
+
+    Parameters
+    ----------
+    true_y : np.array
+        True y's (true labels)
+    pred_y : np.array
+        Predicted y's (predicted labels)
+
+    Returns
+    -------
+    float
+    """
     R = np.sum(true_y)
     trueidxs = np.where(true_y)[0]
     retrieved_R_docs = np.argsort(pred_y)[::-1][:int(R)]
@@ -15,15 +29,47 @@ def R_precision(true_y, pred_y):
     return n_true / float(R)
 
 
-def get_accuracy(true_y, y_hat):
-    assert len(true_y) == len(y_hat)
+def get_accuracy(true_y, pred_y):
+    """
+    Given two lists or np.arrays, calculate the accuracy.
+
+    Parameters
+    ----------
+    true_y : np.array
+        True y's (true labels)
+    pred_y : np.array
+        Predicted y's (predicted labels)
+
+    Returns
+    -------
+    float
+    """
+    assert len(true_y) == len(pred_y)
     numcorr = lambda a, b: np.where(np.array(a) == np.array(b))[0].shape[0]
-    return numcorr(true_y, y_hat) / float(len(true_y)) * 100.0
+    return numcorr(true_y, pred_y) / float(len(true_y)) * 100.0
 
 
-def get_accuracy_per_lab(true_y, y_hat, n_labels):
+def get_accuracy_per_lab(true_y, pred_y, n_labels):
+    """
+    Given two np.arrays, calculate an accuracy per label.
+    Returns a list of accuracies with size n_label.
+    `true_y` and `pred_y` should have values ranging from 0 to n_labels-1
+
+    Parameters
+    ----------
+    true_y : np.array
+        True y's (true labels)
+    pred_y : np.array
+        Predicted y's (predicted labels)
+    n_labels : int
+        Number of labels
+
+    Returns
+    -------
+    list[int]
+    """
     true_y_arr = get_lab_arr(true_y, n_labels)
-    yhat_arr = get_lab_arr(y_hat, n_labels)
+    yhat_arr = get_lab_arr(pred_y, n_labels)
 
     accs = []
     n_utter = np.sum(true_y_arr, axis=0)
@@ -33,6 +79,26 @@ def get_accuracy_per_lab(true_y, y_hat, n_labels):
 
 
 def get_binary_classification_scores(true_y, pred_y, n_labels):
+    """
+    Given two np.arrays, calculate per-label binary scores,
+    and return as a dictionary of arrays with size n_labels.
+    `true_y` and `pred_y` should have values ranging from 0 to n_labels-1
+
+    Parameters
+    ----------
+    true_y : np.array
+        True y's (true labels)
+    pred_y : np.array
+        Predicted y's (predicted labels)
+    n_labels : int
+        Number of labels
+
+    Returns
+    -------
+    dict[str: np.array]
+        Dictionary with keys "precision", "recall", "auc", "rprecision", "f1score".
+        Values are np.arrays with size `n_labels`.
+    """
     true_y_arr = get_lab_arr(true_y, n_labels)
     yhat_arr = get_lab_arr(pred_y, n_labels)
 
@@ -62,6 +128,24 @@ def get_binary_classification_scores(true_y, pred_y, n_labels):
 
 
 def get_overall_scores_in_diff_metrics(true_y, pred_y, tr_doc_label_mat):
+    """
+    Get all the scores: accuracy and
+                        both weighted and non-weighted average of all the binary scores available.
+
+    Parameters
+    ----------
+    true_y : np.array
+        True y's (true labels)
+    pred_y : np.array
+        Predicted y's (predicted labels)
+    tr_doc_label_mat : np.array
+        Document-label matrix for training data
+
+    Returns
+    -------
+    dict[str:float]
+
+    """
     n_states = tr_doc_label_mat.shape[1]
     marginals = get_marginals(tr_doc_label_mat)
     results = {}
@@ -96,16 +180,42 @@ def print_row_of_diff_metrics(model_name, result_numbers, headers=None, filename
 
 
 def get_weighted_avg(score_list, weights):
+    """
+    Get weighted average of scores using the weights.
+    """
     return np.dot(score_list, weights)
 
 
 def get_weighted_avg_from_ymat(score_list, doc_label_mat):
+    """
+    Get weighted average, where the weights are from the marginal probabilities of training data.
+    """
     weights = get_marginals(doc_label_mat)
     weighted_avg = np.dot(score_list, weights)
     return weighted_avg
 
 
-def save_confusion_matrix(true_f, pred_f, lid2shortname, filename):
-    conf = confusion_matrix(true_f, pred_f)
+def save_confusion_matrix(true_y, pred_y, lid2shortname, filename):
+    """
+    Save confusion matrix given true labels and the predicted labels.
+
+    Parameters
+    ----------
+    true_y : np.array
+        True y's (true labels)
+    pred_y : np.array
+        Predicted y's (predicted labels)
+    lid2shortname : dict[int, str]
+        Short names for each label index
+    filename : str
+        Path to the file where the confusion matrix will be saved.
+
+    Returns
+    -------
+    np.array[float]
+        with size (n_labels, n_labels)
+
+    """
+    conf = confusion_matrix(true_y, pred_y)
     save_sq_mat_with_labels(conf, lid2shortname, filename)
     return conf
