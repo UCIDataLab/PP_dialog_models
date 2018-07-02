@@ -239,7 +239,7 @@ def get_noun_phrase_counts(doc, tokenizer, min_np_len, max_np_len, stopwords_lis
     for text in doc:
         # much faster when using regex & lambda (cntvec's tokenizer) than using nltk's word tokenizer
         # toktxt = nltk.pos_tag(nltk.word_tokenize(text))
-        toktxt = nltk.pos_tag(tokenizer(text.decode('utf-8')))
+        toktxt = nltk.pos_tag(tokenizer(text.encode().decode('utf-8')))
         corpus_postag.append(toktxt)
         # update the noun phrase list
         if len(toktxt) > 0:
@@ -331,7 +331,7 @@ def get_stopwords(stopwords_dir='./stopwordlists'):
                     with open(fpath, 'r') as f:
                         reader = csv.reader(f, delimiter="\t")
                         for line in reader:
-                            stopwords.add(' '.join(line).decode('utf-8'))
+                            stopwords.add(' '.join(line).encode().decode('utf-8'))
     else:
         print("ERROR: directory "+ stopwords_dir+" does not exist!")
     return stopwords

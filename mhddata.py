@@ -6,7 +6,10 @@ from collections import defaultdict
 
 import numpy as np
 import pandas as pd
-import cPickle as cp
+try:
+    import cPickle as cp
+except ImportError:
+    import pickle as cp
 import re
 
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
@@ -720,7 +723,7 @@ class MHDData():
                     if insert_st_end:
                         ulist.append(-2)
             else:
-                print "ERROR: [get_ulist] orig_list_type can be either 'session' or 'segment'!"
+                print("ERROR: [get_ulist] orig_list_type can be either 'session' or 'segment'!")
                 exit()
             return ulist
 
@@ -741,7 +744,7 @@ class MHDData():
         elif to_level == 'segment':
             return get_seglist(ids_list, insert_st_end=insert_st_end)
         else:
-            print "ERROR: [convert_docids_level] to_level can be either 'utterance' or 'segment'!"
+            print("ERROR: [convert_docids_level] to_level can be either 'utterance' or 'segment'!")
             exit()
 
     def get_utter_level_subset(self, uid_list, chunk_size=1, overlap=False):

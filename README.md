@@ -5,6 +5,9 @@ Logistic regression and HMM can be used for prediction.
 Author: Jihyun Park <jihyunp@uci.edu> <br>
 Last updated: 6/22/2018
 
+### Requirements
+`Python2` should be installed with packages `numpy`, `nltk`, `pandas`, `sklearn`, `csv`, `cPickle`. 
+
 ### load_model_and_predict.ipynb
 Demo.
   iPython notebook file that loads the pre-trained model and the sample test data
