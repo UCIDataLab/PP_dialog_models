@@ -1243,10 +1243,10 @@ class MHDTestData(MHDData):
             The level of verbosity. Larger value means more verbosity.
         corpus_pkl : str
             Path to the pickle file that saves corpus related data.
-        label_pkl : str
-            Path to the pickle file that saves label related data.
+        tr_label_pkl : str
+            Path to the pickle file where the label related data is saved (from training step).
         vocab_pkl : str
-            Path to the pickle file that saves vocab related data.
+            Path to the pickle file where the vocab related data is saved (from training step).
         """
 
         self.verbose = verbose
