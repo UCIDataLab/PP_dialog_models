@@ -8,9 +8,9 @@ Last updated: 6/22/2018
 ### Requirements
 `Python2` should be installed with packages `numpy`, `nltk`, `pandas`, `sklearn`, `csv`, `cPickle`. 
 
-### load_model_and_predict.ipynb
-Demo.
-  iPython notebook file that loads the pre-trained model and the sample test data
+### Tutorial iPython Notebook
+**`load_model_and_predict.ipynb`**<br>
+ Demo iPython notebook file that loads the pre-trained model and the sample test data
   and predicts on the sample test data set.
   
 ### Input training and test file format 
@@ -20,7 +20,7 @@ For the test data, `topicnumber` and `topicletter` columns are not necessary
 since the test data can be run without labels. 
 However, the scores will not be calculated without those columns.
   
-- **sample_test_data.txt** <br>
+- **data/sample_test_data.txt** <br>
 A sample test data.
   
   
@@ -55,12 +55,16 @@ Preprocessing methods are in **`preprocess.py`** file.
  
  
 ### hmm.py
-Methods that are related to HMM
+Methods that are related to HMM.
 
 
 ### utils.py 
 Utility methods.
 
 
-### ***.pkl Files
-  Pre-trained models, vocabulary, and labels.
+### Pre-trained models
+Saved as `model/*.pkl` Files
+
+  
+### Vocabulary and Label files
+Vocabulary and label files from the training data are saved as `data/vocab.pkl` and `data/label*.pkl`.
