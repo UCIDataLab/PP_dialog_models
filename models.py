@@ -64,12 +64,8 @@ class DialogModel():
             Path to the pickle file that has nested list of output probabilities
         verbose : int
             The level of verbosity in range [0,3]
-        corpus_pkl : str
-            Path to the pickle file where corpus related test data is (will be) saved.
-        tr_label_pkl : str
-            Path to the pickle file where label related training data is saved
-        tr_vocab_pkl : str
-            Path to the pickle file where vocab related training data is saved.
+        output_filename : str
+            Utterance-level results will be saved to this txt file.
 
         Returns
         -------
@@ -143,12 +139,6 @@ class LogRegDialogModel(DialogModel):
             Default = 3. Large number is not recommended since there are labels that are quite rare.
         verbose : int
             The level of verbosity in range [0,3]
-        corpus_pkl : str
-            Path to the pickle file where corpus related data is (will be) saved.
-        label_pkl : str
-            Path to the pickle file where label related data is (will be) saved
-        vocab_pkl : str
-            Path to the pickle file where vocab related data is (will be) saved.
 
         Returns
         -------
@@ -240,8 +230,7 @@ class LogRegDialogModel(DialogModel):
             print("Loading Logistic regression model from "+ model_file)
             self.model, self.vectorizer, self.marginals = cp.load(f)
 
-    def predict(self, test_data, verbose=1, output_filename='./utter_level_results.txt',
-                corpus_pkl='./corpus_te.pkl', tr_label_pkl='./label.pkl', tr_vocab_pkl='./vocab.pkl'):
+    def predict(self, test_data, verbose=1, output_filename='./utter_level_results.txt'):
         """
         Loads test data from 'te_data_file' and processes the data.
         Run prediction using the trained model.
@@ -255,12 +244,6 @@ class LogRegDialogModel(DialogModel):
             The level of verbosity in range [0,3]
         output_filename : str
             Path to the file where the utter-level result will be saved.
-        corpus_pkl : str
-            Path to the pickle file where corpus related test data is (will be) saved.
-        tr_label_pkl : str
-            Path to the pickle file where label related training data is saved
-        tr_vocab_pkl : str
-            Path to the pickle file where vocab related training data is saved.
 
         Returns
         -------
@@ -384,7 +367,6 @@ class HMMDialogModel(DialogModel):
             self.log_end_prob = np.log(self.end_prob)
 
     def predict_viterbi(self, test_data, verbose=1, output_filename="./utter_level_result.txt"):
-                         # spkr_transitions=False):
         """
         Viterbi decoding using output probabilites from the base model,
         marginal probabilities, and transition probabilities.
@@ -397,12 +379,6 @@ class HMMDialogModel(DialogModel):
             The level of verbosity in range [0,3]
         output_filename : str
             Path to the utterance-level result file.
-        corpus_pkl : str
-            Path to the pickle file where corpus related test data is (will be) saved.
-        tr_label_pkl : str
-            Path to the pickle file where label related training data is saved
-        tr_vocab_pkl : str
-            Path to the pickle file where vocab related training data is saved.
         """
         if self.log_transitions is None:
             print ("ERROR: Train or load the model first")
