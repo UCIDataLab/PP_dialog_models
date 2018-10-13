@@ -488,7 +488,6 @@ class DialogResult():
         -------
 
         """
-        print("Calculating scores..")
         scores = {}
 
         true_y_f = flatten_nested_labels(true_y)
