@@ -420,8 +420,9 @@ class MHDData():
         """
         sid2labs_new = {}
         sid2lidarr_new = {}
+        n_labels = len(lab2lid_new)
         for sessid in sid2labs:
-            labarr = np.zeros(self.n_labels, dtype=np.int8)
+            labarr = np.zeros(n_labels, dtype=np.int8)
             sid2labs_new[sessid] = []
             for lab in sid2labs[sessid]:
                 if label_mappings.get(lab, None) is not None:
@@ -447,8 +448,9 @@ class MHDData():
         segid2lid_new = {}
         segid2lidarr = {}
         segid2ltid = {}
+        n_labels = len(lab2lid_new)
         for segid in segid2lab:
-            labarr = np.zeros(self.n_labels)
+            labarr = np.zeros(n_labels)
             lab = segid2lab[segid]
 
             # also update tletter
@@ -1269,10 +1271,10 @@ class MHDTestData(MHDData):
                              min_wlen=min_wlen, token_pattern=token_pattern, verbose=verbose,
                              corpus_pkl=corpus_pkl, label_pkl="", vocab_pkl="")
 
+            self.clean_labels(label_mappings=self.label_mappings)
             self.n_utters = len(self.uid2sstt)
             self.n_vocab = len(self.vocabulary)
             self.n_labels = len(self.lid2lab)
-            self.clean_labels(label_mappings=self.label_mappings)
 
     def print_stats(self):
         print("Number of sessions: %d (ones that have text)" % len(self.sstt2uid))
