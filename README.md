@@ -14,14 +14,11 @@ Last updated: 6/22/2018
   and predicts on the sample test data set.
   
 ### Input training and test file format 
-Training and test file should have at least `visitid`, `talkturn`, 
+Training and test file should be a tab-delimited file with `visitid`, `talkturn`, 
 `text`, `topicnumber`, `topicletter` as column names. <br>
 For the test data, `topicnumber` and `topicletter` columns are not necessary 
 since the test data can be run without labels. 
 However, the scores will not be calculated without those columns.
-  
-- **data/sample_test_data.txt** <br>
-A sample test data.
   
   
 ### models.py
